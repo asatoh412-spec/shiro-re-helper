@@ -122,7 +122,7 @@ VERB = re.compile(r"上昇|低下|短縮|軽減|延長|増加|減少|無視")
 SUBJ = [
   (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の(?:全ての)?敵(?:全て)?の|攻撃した敵の|全ての敵の|敵の"), "enemy"),
   (re.compile(r"自身(?:と自身)?(?:と全ての伏兵|と自身の伏兵)?の"), "self"),
-  (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の?(?:全ての)?(?:城娘|味方)(?:全て)?の"), "inrange"),
+  (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の?(?:全ての)?(?:城娘|味方)(?:と伏兵)?(?:全て)?の"), "inrange"),
   (re.compile(r"(?:全|全ての)(?:城娘|味方)の"), "all"),
   (re.compile(r"(?:部隊の|全ての|全)([^の。\s]{1,20}?)(?:城娘|城)の"), "group"),
   (re.compile(r"対象の"), "target"),
@@ -139,20 +139,41 @@ def group_target(g):
     if g in ATTRS: return "attr:" + ATTRS[g]
     return "other:" + g
 
+# 「巨大化する度に」以降（「最大化時」か次の効果まで）は巨大化回数分だけ効果が重なる
+GIANT_RX = re.compile(r"巨大化(?:する|した)?(?:度|毎|ごと)に|巨大化回数1回につき|巨大化(?:段階|回数)?に応じて(?:更に|さらに)?")
+MAXED_RX = re.compile(r"最大化時[、,]?")
+def mark_giant(text): return MAXED_RX.sub(" ⟪M⟫ ", GIANT_RX.sub(" ⟪G⟫ ", text))
+def giant_at(sent, pos, carry):
+    g = carry
+    for m in re.finditer(r"⟪([GM])⟫", sent[:pos]): g = m.group(1) == "G"
+    return g
+
+SEP = "\n ⟪M⟫ \n"  # 別々の編成特技・特殊能力の区切り（巨大化の効果を持ち越さない）
+def max_giants(rarity, text=""):
+    """最大化までの巨大化回数（wiki用語集「最大化」: ☆1～2は3回、☆3～5は4回、☆6～7は5回）"""
+    m = re.search(r"([一二三四五六七八九十\d]+)回まで巨大化可能", text or "")
+    if m:
+        k = m.group(1)
+        return int(k) if k.isdigit() else "一二三四五六七八九十".index(k) + 1
+    r = rarity or 7
+    return 3 if r <= 2 else 4 if r <= 5 else 5
+
 def segments(text):
-    out, prev = [], None
-    for sent in re.split(r"[。\n　 ]+", text):
+    out, prev, giant = [], None, False
+    for sent in re.split(r"([。\n　 ]+)", mark_giant(text)):
         if not sent: continue
+        if re.fullmatch(r"[。\n　 ]+", sent): continue
+        if sent in ("⟪G⟫", "⟪M⟫"): giant = sent == "⟪G⟫"; continue
         hits = sorted(((m.start(), m.end(), kind, m) for rx, kind in SUBJ for m in rx.finditer(sent)), key=lambda h: (h[0], -h[1]))
         chosen, last = [], -1
         for h in hits:
             if h[0] >= last: chosen.append(h); last = h[1]
         if not chosen:
-            out.append((prev[0], prev[1], sent) if prev else ("none", None, sent)); continue
+            out.append((prev[0], prev[1], sent, giant) if prev else ("none", None, sent, giant)); continue
         prev = (chosen[-1][2], chosen[-1][3])
         for i, (s, e, kind, m) in enumerate(chosen):
             end = chosen[i + 1][0] if i + 1 < len(chosen) else len(sent)
-            out.append((kind, m, sent[e:end]))
+            out.append((kind, m, sent[e:end], giant))
     return out
 
 def classify(enemy, stat, val, unit, verb):
@@ -175,40 +196,79 @@ def classify(enemy, stat, val, unit, verb):
 
 def num(v): return int(v) if float(v).is_integer() else v
 
-def effects_of(text):
+TAIL_PAIRS = re.compile(r"(?:と\d+(?:\.\d+)?)?[、,/ ]*(?:" + STAT + r"(?:(?:と|や|、)" + STAT + r")*(?:が|を|は)?\d+(?:\.\d+)?(?:%|倍)?(?:と\d+)?[、,/ ]*)*")
+GIANT_UPTO = re.compile(r"(?:(" + STAT + r")が?)?巨大化(?:段階)?に応じて(?:更に|さらに)?(?:(" + STAT + r")が?)?上昇[（(]最大(\d+(?:\.\d+)?)(%|倍)?")
+def effects_of(text, giants=5):
     effs = []
     if not text or text == "なし": return effs
     text = re.sub(r"与ダメ(?!ージ)", "与ダメージ", re.sub(r"被ダメ(?!ージ)", "被ダメージ", text))
     selfonly = "自分のみ" in text
-    for kind, m, seg in segments(text):
+    segs = segments(text)
+    for si, (kind, m, seg, giant) in enumerate(segs):
         if kind == "none": continue
+        # 「攻撃と防御が50 被回復量が8%上昇」のように動詞が後ろの区切りにあるときに使う
+        ahead = "".join(x[2] for x in segs[si + 1:si + 3])[:40]
+        # 「5秒間〜」「ダメージを与え」のような一時的な効果は巨大化で重ならない
+        seg_giant = giant
+        if giant and re.search(r"秒間|ダメージを与え", seg): giant = False
         target = group_target(m.group(1)) if kind == "group" else ("self" if selfonly else "target") if kind == "target" else kind
         cond = bool(re.search(r"度に|毎に|ずつ|時間経過|撃破時|被攻撃時|計略中|発動中", seg))
-        giant = "巨大化する度に" in seg or "巨大化毎に" in seg
         cap = re.search(r"(?:上限|最大)(\d+)%", seg)
         stack = bool(re.search(r"重複(?!なし|しない)", seg))
         di = re.search(r"防御を(\d+)%無視", seg)
-        if di: effs.append(dict(type="def_ignore", value=int(di.group(1)), target="self"))
+        if di:
+            e = dict(type="def_ignore", value=int(di.group(1)) * (giants if giant else 1), target="self")
+            if giant: e["giant"] = giants
+            effs.append(e)
         elif "防御無視" in seg or "防御を無視" in seg:
             e = dict(type="def_ignore", value=100, target="self")
             if cond: e["cond"] = True
             effs.append(e)
         for p in PAIR.finditer(seg):
-            v = VERB.search(seg, p.end())
+            giant = seg_giant and not re.search(r"秒間|ダメージを与え", seg[:p.end()])
             val = float(p.group(2)); unit = p.group(3) or ""
+            v_in = VERB.search(seg, p.end())
+            # 値が区切りの最後にあるときだけ、後ろの区切りの動詞を使う
+            tail_empty = bool(TAIL_PAIRS.fullmatch(seg[p.end():]))
+            v = v_in or (VERB.search(ahead) if unit != "倍" and tail_empty else None)
             verb = v.group(0) if v else None
             # 「1.5倍」のように動詞を伴わない倍率は上昇として扱う
-            if unit == "倍" and (not v or v.start() - p.end() > 8): verb = "上昇"
+            if unit == "倍" and (not v_in or v_in.start() - p.end() > 8): verb = "上昇"
             if not verb: continue
-            if giant: val *= 5
+            if giant: val *= giants
             if cap and unit == "%": val = float(cap.group(1))
-            for stat in re.findall(STAT, p.group(1)):
-                t, vv = classify(target == "enemy", stat, val, unit, verb)
-                if not t: continue
-                e = dict(type=t, value=num(vv), target=target)
-                if stack: e["stack"] = True
-                if cond or giant: e["cond"] = True
-                effs.append(e)
+            variants = [(target, val, unit)]
+            # 「攻撃と防御が8%と40」: 割合と固定値の両方
+            both = re.match(r"と(\d+)(?![\d.%倍])", seg[p.end():])
+            if both and unit == "%": variants.append((target, float(both.group(1)) * (giants if giant else 1), ""))
+            # 「射程内の城娘の攻撃が8%上昇、自身は10%上昇」: 自身だけ別の値
+            sv = re.search(r"自身は(\d+(?:\.\d+)?)%", seg[p.end():])
+            if sv and unit == "%" and target != "self" and target != "enemy":
+                variants.append(("self", float(sv.group(1)) * (giants if giant else 1), "%"))
+            for tg, vl, un in variants:
+                for stat in re.findall(STAT, p.group(1)):
+                    t, vv = classify(tg == "enemy", stat, vl, un, verb)
+                    if not t: continue
+                    e = dict(type=t, value=num(vv), target=tg)
+                    if stack: e["stack"] = True
+                    if cond: e["cond"] = True
+                    if giant: e["giant"] = giants
+                    effs.append(e)
+    # 「攻撃が巨大化段階に応じて上昇(最大600)」: 最大化したときの値
+    for mm in GIANT_UPTO.finditer(text):
+        stat = mm.group(1) or mm.group(2); val = float(mm.group(3)); unit = mm.group(4) or ""
+        pre = text[max(0, text.rfind("。", 0, mm.start()) + 1):mm.start()]
+        hits = [(h.start(), kind, h) for rx, kind in SUBJ for h in rx.finditer(pre)]
+        target = "self"
+        if hits and not selfonly:
+            _, kind, h = max(hits, key=lambda x: x[0])
+            target = group_target(h.group(1)) if kind == "group" else kind
+        t, vv = classify(target == "enemy", stat, val, unit, "上昇")
+        if t: effs.append(dict(type=t, value=num(vv), target=target, giant=giants))
+    # 「巨大化段階に応じて攻撃がさらに10%ずつ上昇」
+    for mm in re.finditer(r"巨大化段階に応じて(" + STAT + r")が(?:さらに|更に)?(\d+(?:\.\d+)?)%ず[つづ]上昇", text):
+        t, vv = classify(False, mm.group(1), float(mm.group(2)) * giants, "%", "上昇")
+        if t: effs.append(dict(type=t, value=num(vv), target="self" if selfonly else "target", giant=giants))
     seen, out = set(), []
     for e in effs:
         k = (e["type"], e["target"], e["value"])
@@ -249,11 +309,21 @@ def ref_dest(d, selfonly):
     if g: return group_target(g.group(1)), stats, ex
     return "other:" + d, stats, ex
 
-def refs_of(text):
+def refs_of(text, giants=5):
     out = []
     if not text or text == "なし": return out
     selfonly = "自分のみ" in text
-    for sent in re.split(r"[。\n]+", text):
+    carry = False
+    pieces = re.split(r"([。\n]+)", mark_giant(text))
+    for i in range(0, len(pieces), 2):
+        sent = pieces[i]
+        start_carry = carry
+        carry = giant_at(sent, len(sent), start_carry)
+        if not sent: continue
+        def gmul(e, pos):
+            if giant_at(sent, pos, start_carry):
+                e["ref"]["pct"] = num(round(e["ref"]["pct"] * giants, 2)); e["giant"] = giants
+            return e
         kobu = "鼓舞" in sent
         cond = bool(re.search(r"度に|毎に|ずつ|最大化時|撃破時|被攻撃時", sent))
         done = []
@@ -274,7 +344,7 @@ def refs_of(text):
                         if ex or (tgt == "inrange" and re.search(r"除く|以外", sent)): e["exSelf"] = True
                         if kobu: e["kobu"] = True
                         if cond: e["cond"] = True
-                        out.append(e)
+                        out.append(gmul(e, m.start()))
         for m in REF_C.finditer(sent):
             if any(m.start() < e and s < m.end() for s, e in done): continue
             tgt, dstats, ex = ref_dest(m.group(1), selfonly)
@@ -284,8 +354,8 @@ def refs_of(text):
                 if ex or re.search(r"除く|以外", sent): e["exSelf"] = True
                 if kobu: e["kobu"] = True
                 if cond: e["cond"] = True
-                out.append(e)
-        km = re.search(r"鼓舞(?:効果|の加算値)(?:と[^がを]{1,10})?が(\d+(?:\.\d+)?)倍", sent)
+                out.append(gmul(e, m.start()))
+        km = re.search(r"鼓舞(?:効果|の加算値)(?:と[^がを]{1,10})?が(\d+(?:\.\d+)?)倍", sent) or (kobu and re.search(r"⟪M⟫\s*は?加算値が?(\d+(?:\.\d+)?)倍", sent))
         if km: out.append(dict(type="kobu_mult", value=num(round((float(km.group(1)) - 1) * 100, 1)), target="self"))
         for m in REF_E.finditer(sent):
             for es in re.findall(RS, m.group(1)):
@@ -293,8 +363,8 @@ def refs_of(text):
                 if not t: continue
                 for st, pct in ref_items(m.group(3)):
                     e = dict(type=t, value=0, target="enemy", ref=dict(stat=st, pct=pct, frm="giver"))
-                    if cond or "巨大化" in sent: e["cond"] = True
-                    out.append(e)
+                    if cond: e["cond"] = True
+                    out.append(gmul(e, m.start()))
     return out
 
 # ---- 特殊効果タグ ----
@@ -346,9 +416,9 @@ def tags_of(text):
         out.append({"tag": t, "value": max(nums)} if nums else {"tag": t})
     return out
 
-def block(text, eff_text=None):
+def block(text, eff_text=None, giants=5):
     b = {"text": text}
-    if eff_text is not None: b["effects"] = effects_of(eff_text) + refs_of(eff_text)
+    if eff_text is not None: b["effects"] = effects_of(eff_text, giants) + refs_of(eff_text, giants)
     tg = tags_of(text)
     if tg: b["tags"] = tg
     return b
@@ -381,7 +451,7 @@ def build_units():
         fp = pages["編成特技"].get(u["name"])
         if fp:
             form_text = "\n".join(f"【{n}】{e}" for n, e in fp)
-            form_eff = "\n".join(e for n, e in fp)
+            form_eff = SEP.join(e for n, e in fp)
         else:
             form_text = "\n".join(form_l)
             form_eff = "\n".join(l.replace("[編成]", "") for l in form_l)
@@ -392,17 +462,19 @@ def build_units():
         weapons = list(dict.fromkeys(w if w in WEAPONS else "その他" for w in u["weapon"].split("/") if w))
         far = any(w in FAR for w in weapons) or any(w in BOTH for w in weapons)
         near = any(w not in FAR for w in weapons)
+        g = max_giants(u["rarity"], u["skill"])
         rng_kind = "両" if (far and near) or any(w in BOTH for w in weapons) else "遠" if far else "近"
         out.append(dict(id=no, name=u["name"], rarity=u["rarity"], kai=u["kai"], attr=u["attr"],
             weapon="/".join(weapons), weapons=weapons, weaponRaw=u["weapon"], range=rng_kind,
             hp=vals[0], atk=vals[1], **{"def": vals[2]}, rng=vals[3], heal=vals[4],
-            skill=block(u["skill"], u["skill"]),
-            strategy=block(u["strat"], re.sub(r"^\[\d+s\]", "", first)),
-            formation=block(form_text, form_eff),
-            held=block("\n".join(held_l), "\n".join(l.replace("[所持]", "") for l in held_l)),
+            giants=g,
+            skill=block(u["skill"], u["skill"], g),
+            strategy=block(u["strat"], re.sub(r"^\[\d+s\]", "", first), g),
+            formation=block(form_text, form_eff, g),
+            held=block("\n".join(held_l), "\n".join(l.replace("[所持]", "") for l in held_l), g),
             specialAttack=block(u["special"]),
             kai2Missing=(u["name"] in has_kai2 and u["kai"] != "弐") or None,
-            specialAbility=block("\n".join(f"【{n}】{e}" for n, e in sp), "\n".join(e for n, e in sp))))
+            specialAbility=block("\n".join(f"【{n}】{e}" for n, e in sp), SEP.join(e for n, e in sp), g)))
     for u in out:
         for k in ("skill", "strategy", "formation", "held", "specialAbility"):
             for e in u[k].get("effects", []):
@@ -445,7 +517,7 @@ def summarize(block):
             if e.get("kobu"): body = "鼓舞 " + body
         elif e["type"] == "def_ignore" and e["value"] >= 100: body = "防御無視"
         else: body = f"{name}{sign}{e['value']}{unit}" if sign else f"{name} {e['value']}{unit}"
-        parts.append(f"{target_ja(e.get('target') or 'self')} {body}" + ("（重複）" if e.get("stack") else "") + ("（条件付き）" if e.get("cond") else ""))
+        parts.append(f"{target_ja(e.get('target') or 'self')} {body}" + ("（重複）" if e.get("stack") else "") + (f"（巨大化{e['giant']}回）" if e.get("giant") else "") + ("（条件付き）" if e.get("cond") else ""))
     tags = [t["tag"] + (str(t["value"]) if t.get("value") else "") for t in block.get("tags") or []]
     cd = re.match(r"\[(\d+)s\]", text)
     out = (f"[{cd.group(1)}s]" if cd else "") + "、".join(parts)
@@ -754,7 +826,7 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
 
     <section class="panel">
       <h2>参考: 初期値での能力値計算</h2>
-      <details><summary style="font-size:12px">初期値（Lv・武器・巨大化なし）で計算した実数値を見る</summary>
+      <details><summary style="font-size:12px">初期値（Lv・武器なし、最大化の巨大化補正あり）で計算した実数値を見る</summary>
       <div class="scroll" style="margin-top:6px"><table id="calc"></table></div></details>
       <details style="margin-top:8px">
         <summary>適用されたバフ/デバフの内訳（重複・上書きの判定）</summary>
@@ -799,7 +871,8 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
         <li>変換バフ（「攻撃に防御の50%の値を加算」）と鼓舞バフ（「自身の攻撃の35%の値を射程内の城娘に加算」）は、割合・固定値の後に加算。加算元は他のバフ適用後の値。鼓舞は提供者自身には掛からないものとして計算。</li>
         <li>攻撃速度・隙短縮は系統ごとに乗算。射程の位置関係は考慮せず、「射程内」の効果は全員に届くものとして扱う。</li>
         <li>能力値は改壱・改弐のある城娘は一番上の段階の初期値。特殊能力は「特殊能力発動中」にチェックしたときだけ計算に入る。</li>
-        <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。巨大化補正・地形・装備・武器効果は未反映。</li>
+        <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。地形・装備・武器効果は未反映。</li>
+        <li>「巨大化する度に」の効果は最大化した値（☆1〜2は3回、☆3〜5は4回、☆6〜7は5回分）で計算し、「最大化時」の効果も含めています。能力値には最大化したときの巨大化補正（単属性は1回につき耐久・防御+22%、攻撃+18%、射程+16%、回復+12%、複合属性は+20%・+16%・+16%・+10%）を、編成・所持特技の後、特技・計略の前に掛けています。</li>
       </ul>
     </section>
   </div>
@@ -921,6 +994,7 @@ const refText = e => `${e.ref.frm === "recv" ? "各自" : "提供者"}の${STAT_
 const effText = e => e.ref ? `${(EFFECTS[e.type]?.label ?? e.type).replace("(固定)", "")} ${refText(e)}` : `${EFFECTS[e.type]?.label ?? e.type}${fmtVal(e)}${e.stack ? "（重複）" : ""}`;
 const targetText = t => ({ self:"自身", all:"全体", inrange:"射程内", near:"近接", far:"遠隔", target:"対象1体", enemy:"敵" }[t]
   ?? t.replace("weapon:", "").replace(/\|/g, "・").replace("attr:", "").replace("other:", "") + "城娘");
+const giantTxt = e => e.giant ? `（巨大化${e.giant}回分）` : "";
 const effTag = e => `<span class="tag eff${EFFECTS[e.type]?.enemy ? " enemy" : ""}${e.cond ? " cond" : ""}">${esc(targetText(e.target || "self"))}:${esc(effText(e))}</span>`;
 const fl = Math.floor;
 const weaponsOf = u => u.weapons || String(u.weapon || "").split("/");
@@ -970,11 +1044,15 @@ function byGroups(effs, type) {
   for (const k of ["formation", "held", "normal"]) { g[k] = resolve(effs, type, k); g[k].used.forEach(x => used.add(x)); list = list.concat(g[k].list); }
   return { ...g, used, list };
 }
-// 割合と固定値を、編成→所持→特技計略の順に適用
-function applyStat(base, effs, pctType, flatType) {
+// 巨大化1回あたりの能力値上昇率（wiki「巨大化・属性」）。最大化した回数分を掛ける
+const GIANT_RATE = { single: { hp: 22, atk: 18, def: 22, rng: 16, heal: 12 }, multi: { hp: 20, atk: 16, def: 20, rng: 16, heal: 10 } };
+const giantMul = (u, k) => 1 + (GIANT_RATE[(u.attr || []).length > 1 ? "multi" : "single"][k] || 0) * (u.giants ?? 5) / 100;
+// 割合と固定値を、編成→所持→巨大化補正→特技計略の順に適用
+function applyStat(base, effs, pctType, flatType, gmul = 1) {
   const p = byGroups(effs, pctType), f = byGroups(effs, flatType);
   let v = fl(base * (1 + p.formation.total / 100)) + f.formation.total;
   v = fl(v * (1 + p.held.total / 100)) + f.held.total;
+  v = fl(v * gmul);
   v = fl(v * (1 + p.normal.total / 100)) + f.normal.total;
   return { value: v, p, f };
 }
@@ -998,7 +1076,7 @@ function compute(p = party) {
   const base = members.map(m => {
     const u = m.u, mine = plain.filter(e => e.target !== "enemy" && hits(e, e.from, u));
     const st = {};
-    for (const [k, pt, ft] of STATS) st[k] = applyStat(u[k] ?? 0, mine, pt, ft);
+    for (const [k, pt, ft] of STATS) st[k] = applyStat(u[k] ?? 0, mine, pt, ft, giantMul(u, k));
     return { u, mine, st };
   });
   // 2) 変換バフ・鼓舞バフ（能力値依存）。加算元は他のバフ適用後の値なので、2回まわして互いの加算を反映
@@ -1170,7 +1248,7 @@ function renderCalc(res) {
       <td class="num">${pc(x.dmgUp)}${x.dmgUp2 ? "<br>" + pc(x.dmgUp2) + '<span class="muted" style="font-size:11px">与える</span>' : ""}</td>
       <td class="num">${pc(x.speed)}</td><td class="num">${pc(x.gap)}</td><td class="num">${pc(x.cut)}</td>
       <td class="num">${x.edef}</td><td class="num"><b>${x.dmg}</b></td></tr>`).join("") +
-    `<tr><td colspan="15" class="muted">敵: 防御 ${settings.edef} → ${res.edefBase} ／ 攻撃 ${settings.eatk} → ${res.eatk} ／ 被ダメージ +${res.taken}% ／ 与ダメージ −${res.dealt}% ／ 移動速度 −${res.slow}%。能力値は初期値（Lv・巨大化・装備なし）です。</td></tr>`;
+    `<tr><td colspan="15" class="muted">敵: 防御 ${settings.edef} → ${res.edefBase} ／ 攻撃 ${settings.eatk} → ${res.eatk} ／ 被ダメージ +${res.taken}% ／ 与ダメージ −${res.dealt}% ／ 移動速度 −${res.slow}%。能力値は初期値に最大化の巨大化補正を掛けたもの（Lv・装備なし）です。</td></tr>`;
 
   // 内訳
   const types = Object.keys(EFFECTS).filter(t => res.active.some(a => a.type === t));
@@ -1187,7 +1265,7 @@ function renderCalc(res) {
       const note = !reach ? "対象の城娘が編成にいない" : ok ? (a.stack || t.endsWith("_flat") ? "加算" : "採用") : "同系統のより高い効果に上書き";
       const grp = { formation: "編成", held: "所持", normal: "特技計略" }[a.group];
       return `<tr>${i === 0 ? `<td rowspan="${list.length}">${EFFECTS[t].label}</td>` : ""}
-        <td class="${ok ? "" : "over"}">${esc(a.from.name)}（${a.sourceLabel}・${esc(targetText(a.target || "self"))}）${esc(effText(a))}${a.cond ? "（条件付き）" : ""} <span class="muted">[${grp}]</span></td>
+        <td class="${ok ? "" : "over"}">${esc(a.from.name)}（${a.sourceLabel}・${esc(targetText(a.target || "self"))}）${esc(effText(a))}${giantTxt(a)}${a.cond ? "（条件付き）" : ""} <span class="muted">[${grp}]</span></td>
         <td class="${ok ? "up" : "muted"}">${note}</td></tr>`;
     }).join("");
   }
@@ -1201,19 +1279,19 @@ const refWho = (e, u) => e.ref.frm === "recv" ? "各自" : e.from === u ? "自�
 // 1体分の有効なバフを {cat, text} の並びにする（表示と計略オン/オフの比較に共用）
 function buffItems(x) {
   const u = x.u, out = [];
-  const push = (cat, sign, e, unit, grp) => out.push({ cat, html: `<span class="${sign === "+" ? "up" : "down"}">${sign}${e.value}${unit}</span> <span class="src">${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${e.cond ? "（条件付き）" : ""}</span>` });
+  const push = (cat, sign, e, unit, grp) => out.push({ cat, html: `<span class="${sign === "+" ? "up" : "down"}">${sign}${e.value}${unit}</span> <span class="src">${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
   const groups = (cat, g, unit) => { for (const k of ["formation", "held", "normal"]) if (g[k]) for (const e of g[k].used) push(cat, "+", e, unit, k); };
   for (const [k, label] of [["atk", "攻撃"], ["def", "防御"], ["hp", "耐久"], ["rng", "射程"], ["heal", "回復"]]) {
     groups(label, x.st[k].p, "%"); groups(label, x.st[k].f, "");
     for (const e of x.refs.filter(e => e.type === k + "_flat"))
-      out.push({ cat: label, html: `<span class="up">+（${refWho(e, u)}の${STAT_JA[e.ref.stat]}の${e.pctEff}%）</span> <span class="src">${srcOf(e, u)}${e.kobu ? "・鼓舞" : ""}${e.kmul && e.kmul !== 1 ? `（${e.ref.pct}%×鼓舞効果${e.kmul}倍）` : ""}${e.cond ? "（条件付き）" : ""}</span>` });
+      out.push({ cat: label, html: `<span class="up">+（${refWho(e, u)}の${STAT_JA[e.ref.stat]}の${e.pctEff}%）</span> <span class="src">${srcOf(e, u)}${e.kobu ? "・鼓舞" : ""}${e.kmul && e.kmul !== 1 ? `（${e.ref.pct}%×鼓舞効果${e.kmul}倍）` : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
   }
   groups("与ダメージ", x.upG, "%");
   for (const e of x.up2.used) push("与えるダメージ", "+", e, "%");
   groups("攻撃速度", x.speedG, "%"); groups("隙短縮", x.gapG, "%"); groups("被ダメ軽減", x.cutG, "%");
   if (isMagic(u)) out.push({ cat: "防御無視", html: `<b>術攻撃</b> <span class="src">武器種</span>` });
   else {
-    for (const e of x.ign.used) out.push({ cat: "防御無視", html: e.value >= 100 ? `<b>敵の防御を無視</b> <span class="src">${srcOf(e, u)}</span>` : `<span class="up">+${e.value}%</span> <span class="src">${srcOf(e, u)}</span>` });
+    for (const e of x.ign.used) out.push({ cat: "防御無視", html: e.value >= 100 ? `<b>敵の防御を無視</b> <span class="src">${srcOf(e, u)}</span>` : `<span class="up">+${e.value}%</span> <span class="src">${srcOf(e, u)}${giantTxt(e)}</span>` });
     if (x.scythe) out.push({ cat: "防御無視", html: `<span class="up">+${x.scythe}%</span> <span class="src">鎌の武器種特性（巨大化${settings.giant}回）</span>` });
   }
   return out;
@@ -1221,8 +1299,8 @@ function buffItems(x) {
 function enemyItems(res) {
   const out = [], e = res.enemy;
   const add = (cat, g, unit, sign = "−") => { for (const k of ["formation", "held", "normal"]) for (const x of g[k].used)
-    out.push({ cat, html: x.ref ? `<span class="down">−（${esc(x.from.name)}の${STAT_JA[x.ref.stat]}の${x.ref.pct}%）</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${x.cond ? "（条件付き）" : ""}</span>`
-      : `<span class="${sign === "+" ? "up" : "down"}">${sign}${x.value}${unit}</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${GL[k] ? "［" + GL[k] + "］" : ""}${x.cond ? "（条件付き）" : ""}</span>` }); };
+    out.push({ cat, html: x.ref ? `<span class="down">−（${esc(x.from.name)}の${STAT_JA[x.ref.stat]}の${x.ref.pct}%）</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>`
+      : `<span class="${sign === "+" ? "up" : "down"}">${sign}${x.value}${unit}</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${GL[k] ? "［" + GL[k] + "］" : ""}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>` }); };
   add("防御", e.enemy_def, "%"); add("防御", e.enemy_def_flat, ""); add("攻撃", e.enemy_atk, "%"); add("攻撃", e.enemy_atk_flat, "");
   add("被ダメージ", e.enemy_taken, "%", "+"); add("与ダメージ", e.enemy_dealt, "%"); add("移動速度", e.enemy_slow, "%"); add("射程", e.enemy_rng, "%");
   return out;

@@ -1,5 +1,5 @@
 // 自動生成: build.py --pwa
-const CACHE = "shiro-52a3bcb0";
+const CACHE = "shiro-965110a1";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
