@@ -122,7 +122,7 @@ VERB = re.compile(r"上昇|低下|短縮|軽減|延長|増加|減少|無視")
 SUBJ = [
   (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の(?:全ての)?敵(?:全て)?の|攻撃した敵の|全ての敵の|敵の"), "enemy"),
   (re.compile(r"自身(?:と自身)?(?:と全ての伏兵|と自身の伏兵)?の"), "self"),
-  (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の?(?:全ての)?(?:城娘|味方)(?:全て)?の"), "inrange"),
+  (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の?(?:全ての)?(?:城娘|味方)(?:と伏兵)?(?:全て)?の"), "inrange"),
   (re.compile(r"(?:全|全ての)(?:城娘|味方)の"), "all"),
   (re.compile(r"(?:部隊の|全ての|全)([^の。\s]{1,20}?)(?:城娘|城)の"), "group"),
   (re.compile(r"対象の"), "target"),
@@ -140,7 +140,7 @@ def group_target(g):
     return "other:" + g
 
 # 「巨大化する度に」以降（「最大化時」か次の効果まで）は巨大化回数分だけ効果が重なる
-GIANT_RX = re.compile(r"巨大化(?:する|した)?(?:度|毎|ごと)に|巨大化(?:段階|回数)?に応じて(?:更に|さらに)?")
+GIANT_RX = re.compile(r"巨大化(?:する|した)?(?:度|毎|ごと)に|巨大化回数1回につき|巨大化(?:段階|回数)?に応じて(?:更に|さらに)?")
 MAXED_RX = re.compile(r"最大化時[、,]?")
 def mark_giant(text): return MAXED_RX.sub(" ⟪M⟫ ", GIANT_RX.sub(" ⟪G⟫ ", text))
 def giant_at(sent, pos, carry):
@@ -196,14 +196,20 @@ def classify(enemy, stat, val, unit, verb):
 
 def num(v): return int(v) if float(v).is_integer() else v
 
+TAIL_PAIRS = re.compile(r"(?:と\d+(?:\.\d+)?)?[、,/ ]*(?:" + STAT + r"(?:(?:と|や|、)" + STAT + r")*(?:が|を|は)?\d+(?:\.\d+)?(?:%|倍)?(?:と\d+)?[、,/ ]*)*")
+GIANT_UPTO = re.compile(r"(?:(" + STAT + r")が?)?巨大化(?:段階)?に応じて(?:更に|さらに)?(?:(" + STAT + r")が?)?上昇[（(]最大(\d+(?:\.\d+)?)(%|倍)?")
 def effects_of(text, giants=5):
     effs = []
     if not text or text == "なし": return effs
     text = re.sub(r"与ダメ(?!ージ)", "与ダメージ", re.sub(r"被ダメ(?!ージ)", "被ダメージ", text))
     selfonly = "自分のみ" in text
-    for kind, m, seg, giant in segments(text):
+    segs = segments(text)
+    for si, (kind, m, seg, giant) in enumerate(segs):
         if kind == "none": continue
+        # 「攻撃と防御が50 被回復量が8%上昇」のように動詞が後ろの区切りにあるときに使う
+        ahead = "".join(x[2] for x in segs[si + 1:si + 3])[:40]
         # 「5秒間〜」「ダメージを与え」のような一時的な効果は巨大化で重ならない
+        seg_giant = giant
         if giant and re.search(r"秒間|ダメージを与え", seg): giant = False
         target = group_target(m.group(1)) if kind == "group" else ("self" if selfonly else "target") if kind == "target" else kind
         cond = bool(re.search(r"度に|毎に|ずつ|時間経過|撃破時|被攻撃時|計略中|発動中", seg))
@@ -219,22 +225,50 @@ def effects_of(text, giants=5):
             if cond: e["cond"] = True
             effs.append(e)
         for p in PAIR.finditer(seg):
-            v = VERB.search(seg, p.end())
+            giant = seg_giant and not re.search(r"秒間|ダメージを与え", seg[:p.end()])
             val = float(p.group(2)); unit = p.group(3) or ""
+            v_in = VERB.search(seg, p.end())
+            # 値が区切りの最後にあるときだけ、後ろの区切りの動詞を使う
+            tail_empty = bool(TAIL_PAIRS.fullmatch(seg[p.end():]))
+            v = v_in or (VERB.search(ahead) if unit != "倍" and tail_empty else None)
             verb = v.group(0) if v else None
             # 「1.5倍」のように動詞を伴わない倍率は上昇として扱う
-            if unit == "倍" and (not v or v.start() - p.end() > 8): verb = "上昇"
+            if unit == "倍" and (not v_in or v_in.start() - p.end() > 8): verb = "上昇"
             if not verb: continue
             if giant: val *= giants
             if cap and unit == "%": val = float(cap.group(1))
-            for stat in re.findall(STAT, p.group(1)):
-                t, vv = classify(target == "enemy", stat, val, unit, verb)
-                if not t: continue
-                e = dict(type=t, value=num(vv), target=target)
-                if stack: e["stack"] = True
-                if cond: e["cond"] = True
-                if giant: e["giant"] = giants
-                effs.append(e)
+            variants = [(target, val, unit)]
+            # 「攻撃と防御が8%と40」: 割合と固定値の両方
+            both = re.match(r"と(\d+)(?![\d.%倍])", seg[p.end():])
+            if both and unit == "%": variants.append((target, float(both.group(1)) * (giants if giant else 1), ""))
+            # 「射程内の城娘の攻撃が8%上昇、自身は10%上昇」: 自身だけ別の値
+            sv = re.search(r"自身は(\d+(?:\.\d+)?)%", seg[p.end():])
+            if sv and unit == "%" and target != "self" and target != "enemy":
+                variants.append(("self", float(sv.group(1)) * (giants if giant else 1), "%"))
+            for tg, vl, un in variants:
+                for stat in re.findall(STAT, p.group(1)):
+                    t, vv = classify(tg == "enemy", stat, vl, un, verb)
+                    if not t: continue
+                    e = dict(type=t, value=num(vv), target=tg)
+                    if stack: e["stack"] = True
+                    if cond: e["cond"] = True
+                    if giant: e["giant"] = giants
+                    effs.append(e)
+    # 「攻撃が巨大化段階に応じて上昇(最大600)」: 最大化したときの値
+    for mm in GIANT_UPTO.finditer(text):
+        stat = mm.group(1) or mm.group(2); val = float(mm.group(3)); unit = mm.group(4) or ""
+        pre = text[max(0, text.rfind("。", 0, mm.start()) + 1):mm.start()]
+        hits = [(h.start(), kind, h) for rx, kind in SUBJ for h in rx.finditer(pre)]
+        target = "self"
+        if hits and not selfonly:
+            _, kind, h = max(hits, key=lambda x: x[0])
+            target = group_target(h.group(1)) if kind == "group" else kind
+        t, vv = classify(target == "enemy", stat, val, unit, "上昇")
+        if t: effs.append(dict(type=t, value=num(vv), target=target, giant=giants))
+    # 「巨大化段階に応じて攻撃がさらに10%ずつ上昇」
+    for mm in re.finditer(r"巨大化段階に応じて(" + STAT + r")が(?:さらに|更に)?(\d+(?:\.\d+)?)%ず[つづ]上昇", text):
+        t, vv = classify(False, mm.group(1), float(mm.group(2)) * giants, "%", "上昇")
+        if t: effs.append(dict(type=t, value=num(vv), target="self" if selfonly else "target", giant=giants))
     seen, out = set(), []
     for e in effs:
         k = (e["type"], e["target"], e["value"])
@@ -321,7 +355,7 @@ def refs_of(text, giants=5):
                 if kobu: e["kobu"] = True
                 if cond: e["cond"] = True
                 out.append(gmul(e, m.start()))
-        km = re.search(r"鼓舞(?:効果|の加算値)(?:と[^がを]{1,10})?が(\d+(?:\.\d+)?)倍", sent)
+        km = re.search(r"鼓舞(?:効果|の加算値)(?:と[^がを]{1,10})?が(\d+(?:\.\d+)?)倍", sent) or (kobu and re.search(r"⟪M⟫\s*は?加算値が?(\d+(?:\.\d+)?)倍", sent))
         if km: out.append(dict(type="kobu_mult", value=num(round((float(km.group(1)) - 1) * 100, 1)), target="self"))
         for m in REF_E.finditer(sent):
             for es in re.findall(RS, m.group(1)):
@@ -792,7 +826,7 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
 
     <section class="panel">
       <h2>参考: 初期値での能力値計算</h2>
-      <details><summary style="font-size:12px">初期値（Lv・武器・巨大化なし）で計算した実数値を見る</summary>
+      <details><summary style="font-size:12px">初期値（Lv・武器なし、最大化の巨大化補正あり）で計算した実数値を見る</summary>
       <div class="scroll" style="margin-top:6px"><table id="calc"></table></div></details>
       <details style="margin-top:8px">
         <summary>適用されたバフ/デバフの内訳（重複・上書きの判定）</summary>
@@ -837,8 +871,8 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
         <li>変換バフ（「攻撃に防御の50%の値を加算」）と鼓舞バフ（「自身の攻撃の35%の値を射程内の城娘に加算」）は、割合・固定値の後に加算。加算元は他のバフ適用後の値。鼓舞は提供者自身には掛からないものとして計算。</li>
         <li>攻撃速度・隙短縮は系統ごとに乗算。射程の位置関係は考慮せず、「射程内」の効果は全員に届くものとして扱う。</li>
         <li>能力値は改壱・改弐のある城娘は一番上の段階の初期値。特殊能力は「特殊能力発動中」にチェックしたときだけ計算に入る。</li>
-        <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。巨大化補正・地形・装備・武器効果は未反映。</li>
-        <li>「巨大化する度に」の効果は最大化した値（☆1〜2は3回、☆3〜5は4回、☆6〜7は5回分）で計算し、「最大化時」の効果も含めています。</li>
+        <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。地形・装備・武器効果は未反映。</li>
+        <li>「巨大化する度に」の効果は最大化した値（☆1〜2は3回、☆3〜5は4回、☆6〜7は5回分）で計算し、「最大化時」の効果も含めています。能力値には最大化したときの巨大化補正（単属性は1回につき耐久・防御+22%、攻撃+18%、射程+16%、回復+12%、複合属性は+20%・+16%・+16%・+10%）を、編成・所持特技の後、特技・計略の前に掛けています。</li>
       </ul>
     </section>
   </div>
@@ -1010,11 +1044,15 @@ function byGroups(effs, type) {
   for (const k of ["formation", "held", "normal"]) { g[k] = resolve(effs, type, k); g[k].used.forEach(x => used.add(x)); list = list.concat(g[k].list); }
   return { ...g, used, list };
 }
-// 割合と固定値を、編成→所持→特技計略の順に適用
-function applyStat(base, effs, pctType, flatType) {
+// 巨大化1回あたりの能力値上昇率（wiki「巨大化・属性」）。最大化した回数分を掛ける
+const GIANT_RATE = { single: { hp: 22, atk: 18, def: 22, rng: 16, heal: 12 }, multi: { hp: 20, atk: 16, def: 20, rng: 16, heal: 10 } };
+const giantMul = (u, k) => 1 + (GIANT_RATE[(u.attr || []).length > 1 ? "multi" : "single"][k] || 0) * (u.giants ?? 5) / 100;
+// 割合と固定値を、編成→所持→巨大化補正→特技計略の順に適用
+function applyStat(base, effs, pctType, flatType, gmul = 1) {
   const p = byGroups(effs, pctType), f = byGroups(effs, flatType);
   let v = fl(base * (1 + p.formation.total / 100)) + f.formation.total;
   v = fl(v * (1 + p.held.total / 100)) + f.held.total;
+  v = fl(v * gmul);
   v = fl(v * (1 + p.normal.total / 100)) + f.normal.total;
   return { value: v, p, f };
 }
@@ -1038,7 +1076,7 @@ function compute(p = party) {
   const base = members.map(m => {
     const u = m.u, mine = plain.filter(e => e.target !== "enemy" && hits(e, e.from, u));
     const st = {};
-    for (const [k, pt, ft] of STATS) st[k] = applyStat(u[k] ?? 0, mine, pt, ft);
+    for (const [k, pt, ft] of STATS) st[k] = applyStat(u[k] ?? 0, mine, pt, ft, giantMul(u, k));
     return { u, mine, st };
   });
   // 2) 変換バフ・鼓舞バフ（能力値依存）。加算元は他のバフ適用後の値なので、2回まわして互いの加算を反映
@@ -1210,7 +1248,7 @@ function renderCalc(res) {
       <td class="num">${pc(x.dmgUp)}${x.dmgUp2 ? "<br>" + pc(x.dmgUp2) + '<span class="muted" style="font-size:11px">与える</span>' : ""}</td>
       <td class="num">${pc(x.speed)}</td><td class="num">${pc(x.gap)}</td><td class="num">${pc(x.cut)}</td>
       <td class="num">${x.edef}</td><td class="num"><b>${x.dmg}</b></td></tr>`).join("") +
-    `<tr><td colspan="15" class="muted">敵: 防御 ${settings.edef} → ${res.edefBase} ／ 攻撃 ${settings.eatk} → ${res.eatk} ／ 被ダメージ +${res.taken}% ／ 与ダメージ −${res.dealt}% ／ 移動速度 −${res.slow}%。能力値は初期値（Lv・巨大化・装備なし）です。</td></tr>`;
+    `<tr><td colspan="15" class="muted">敵: 防御 ${settings.edef} → ${res.edefBase} ／ 攻撃 ${settings.eatk} → ${res.eatk} ／ 被ダメージ +${res.taken}% ／ 与ダメージ −${res.dealt}% ／ 移動速度 −${res.slow}%。能力値は初期値に最大化の巨大化補正を掛けたもの（Lv・装備なし）です。</td></tr>`;
 
   // 内訳
   const types = Object.keys(EFFECTS).filter(t => res.active.some(a => a.type === t));
