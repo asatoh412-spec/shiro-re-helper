@@ -238,6 +238,7 @@
         <li>攻撃速度・隙短縮は系統ごとに乗算。射程の位置関係は考慮せず、「射程内」の効果は全員に届くものとして扱う。</li>
         <li>能力値は改壱・改弐のある城娘は一番上の段階の初期値。特殊能力は「特殊能力発動中」にチェックしたときだけ計算に入る。</li>
         <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。巨大化補正・地形・装備・武器効果は未反映。</li>
+        <li>「巨大化する度に」の効果は最大化した値（☆1〜2は3回、☆3〜5は4回、☆6〜7は5回分）で計算し、「最大化時」の効果も含めています。</li>
       </ul>
     </section>
   </div>
@@ -359,6 +360,7 @@ const refText = e => `${e.ref.frm === "recv" ? "各自" : "提供者"}の${STAT_
 const effText = e => e.ref ? `${(EFFECTS[e.type]?.label ?? e.type).replace("(固定)", "")} ${refText(e)}` : `${EFFECTS[e.type]?.label ?? e.type}${fmtVal(e)}${e.stack ? "（重複）" : ""}`;
 const targetText = t => ({ self:"自身", all:"全体", inrange:"射程内", near:"近接", far:"遠隔", target:"対象1体", enemy:"敵" }[t]
   ?? t.replace("weapon:", "").replace(/\|/g, "・").replace("attr:", "").replace("other:", "") + "城娘");
+const giantTxt = e => e.giant ? `（巨大化${e.giant}回分）` : "";
 const effTag = e => `<span class="tag eff${EFFECTS[e.type]?.enemy ? " enemy" : ""}${e.cond ? " cond" : ""}">${esc(targetText(e.target || "self"))}:${esc(effText(e))}</span>`;
 const fl = Math.floor;
 const weaponsOf = u => u.weapons || String(u.weapon || "").split("/");
@@ -625,7 +627,7 @@ function renderCalc(res) {
       const note = !reach ? "対象の城娘が編成にいない" : ok ? (a.stack || t.endsWith("_flat") ? "加算" : "採用") : "同系統のより高い効果に上書き";
       const grp = { formation: "編成", held: "所持", normal: "特技計略" }[a.group];
       return `<tr>${i === 0 ? `<td rowspan="${list.length}">${EFFECTS[t].label}</td>` : ""}
-        <td class="${ok ? "" : "over"}">${esc(a.from.name)}（${a.sourceLabel}・${esc(targetText(a.target || "self"))}）${esc(effText(a))}${a.cond ? "（条件付き）" : ""} <span class="muted">[${grp}]</span></td>
+        <td class="${ok ? "" : "over"}">${esc(a.from.name)}（${a.sourceLabel}・${esc(targetText(a.target || "self"))}）${esc(effText(a))}${giantTxt(a)}${a.cond ? "（条件付き）" : ""} <span class="muted">[${grp}]</span></td>
         <td class="${ok ? "up" : "muted"}">${note}</td></tr>`;
     }).join("");
   }
@@ -639,19 +641,19 @@ const refWho = (e, u) => e.ref.frm === "recv" ? "各自" : e.from === u ? "自�
 // 1体分の有効なバフを {cat, text} の並びにする（表示と計略オン/オフの比較に共用）
 function buffItems(x) {
   const u = x.u, out = [];
-  const push = (cat, sign, e, unit, grp) => out.push({ cat, html: `<span class="${sign === "+" ? "up" : "down"}">${sign}${e.value}${unit}</span> <span class="src">${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${e.cond ? "（条件付き）" : ""}</span>` });
+  const push = (cat, sign, e, unit, grp) => out.push({ cat, html: `<span class="${sign === "+" ? "up" : "down"}">${sign}${e.value}${unit}</span> <span class="src">${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
   const groups = (cat, g, unit) => { for (const k of ["formation", "held", "normal"]) if (g[k]) for (const e of g[k].used) push(cat, "+", e, unit, k); };
   for (const [k, label] of [["atk", "攻撃"], ["def", "防御"], ["hp", "耐久"], ["rng", "射程"], ["heal", "回復"]]) {
     groups(label, x.st[k].p, "%"); groups(label, x.st[k].f, "");
     for (const e of x.refs.filter(e => e.type === k + "_flat"))
-      out.push({ cat: label, html: `<span class="up">+（${refWho(e, u)}の${STAT_JA[e.ref.stat]}の${e.pctEff}%）</span> <span class="src">${srcOf(e, u)}${e.kobu ? "・鼓舞" : ""}${e.kmul && e.kmul !== 1 ? `（${e.ref.pct}%×鼓舞効果${e.kmul}倍）` : ""}${e.cond ? "（条件付き）" : ""}</span>` });
+      out.push({ cat: label, html: `<span class="up">+（${refWho(e, u)}の${STAT_JA[e.ref.stat]}の${e.pctEff}%）</span> <span class="src">${srcOf(e, u)}${e.kobu ? "・鼓舞" : ""}${e.kmul && e.kmul !== 1 ? `（${e.ref.pct}%×鼓舞効果${e.kmul}倍）` : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
   }
   groups("与ダメージ", x.upG, "%");
   for (const e of x.up2.used) push("与えるダメージ", "+", e, "%");
   groups("攻撃速度", x.speedG, "%"); groups("隙短縮", x.gapG, "%"); groups("被ダメ軽減", x.cutG, "%");
   if (isMagic(u)) out.push({ cat: "防御無視", html: `<b>術攻撃</b> <span class="src">武器種</span>` });
   else {
-    for (const e of x.ign.used) out.push({ cat: "防御無視", html: e.value >= 100 ? `<b>敵の防御を無視</b> <span class="src">${srcOf(e, u)}</span>` : `<span class="up">+${e.value}%</span> <span class="src">${srcOf(e, u)}</span>` });
+    for (const e of x.ign.used) out.push({ cat: "防御無視", html: e.value >= 100 ? `<b>敵の防御を無視</b> <span class="src">${srcOf(e, u)}</span>` : `<span class="up">+${e.value}%</span> <span class="src">${srcOf(e, u)}${giantTxt(e)}</span>` });
     if (x.scythe) out.push({ cat: "防御無視", html: `<span class="up">+${x.scythe}%</span> <span class="src">鎌の武器種特性（巨大化${settings.giant}回）</span>` });
   }
   return out;
@@ -659,8 +661,8 @@ function buffItems(x) {
 function enemyItems(res) {
   const out = [], e = res.enemy;
   const add = (cat, g, unit, sign = "−") => { for (const k of ["formation", "held", "normal"]) for (const x of g[k].used)
-    out.push({ cat, html: x.ref ? `<span class="down">−（${esc(x.from.name)}の${STAT_JA[x.ref.stat]}の${x.ref.pct}%）</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${x.cond ? "（条件付き）" : ""}</span>`
-      : `<span class="${sign === "+" ? "up" : "down"}">${sign}${x.value}${unit}</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${GL[k] ? "［" + GL[k] + "］" : ""}${x.cond ? "（条件付き）" : ""}</span>` }); };
+    out.push({ cat, html: x.ref ? `<span class="down">−（${esc(x.from.name)}の${STAT_JA[x.ref.stat]}の${x.ref.pct}%）</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>`
+      : `<span class="${sign === "+" ? "up" : "down"}">${sign}${x.value}${unit}</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${GL[k] ? "［" + GL[k] + "］" : ""}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>` }); };
   add("防御", e.enemy_def, "%"); add("防御", e.enemy_def_flat, ""); add("攻撃", e.enemy_atk, "%"); add("攻撃", e.enemy_atk_flat, "");
   add("被ダメージ", e.enemy_taken, "%", "+"); add("与ダメージ", e.enemy_dealt, "%"); add("移動速度", e.enemy_slow, "%"); add("射程", e.enemy_rng, "%");
   return out;
