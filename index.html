@@ -12,126 +12,254 @@
   :root {
     --bg: #f6f4ef; --panel: #fff; --ink: #222; --muted: #6b6b6b; --line: #ddd8cc;
     --accent: #8a3b2e; --ok: #2f7a43; --warn: #b26a00; --bad: #b3261e;
+    --near: #d23b32; --far: #2c74d6;
     --attr-平: #7a8f3a; --attr-平山: #5f7d55; --attr-山: #7b5a36; --attr-水: #2e6fa8; --attr-地獄: #6d2b8f; --attr-無: #777;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; background: var(--bg); color: var(--ink); font-size: 14px; }
-  header { padding: 12px 20px; background: var(--accent); color: #fff; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0; }
-  header .note { font-size: 12px; opacity: .85; }
-  .top { padding: 16px 16px 0; }
-  .top section.panel { margin-bottom: 0; }
-  main { display: grid; grid-template-columns: 400px 1fr; gap: 16px; padding: 16px; }
-  @media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
-  main > div { min-width: 0; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; background: var(--bg); color: var(--ink); font-size: 14px;
+         display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  header { padding: 8px 14px; background: var(--accent); color: #fff; display: flex; align-items: center; gap: 10px; flex: none; }
+  header h1 { font-size: 16px; margin: 0; flex: 1; }
+  header .count { font-size: 12.5px; opacity: .9; }
+  nav.tabs { display: flex; background: #fff; border-bottom: 1px solid var(--line); flex: none; }
+  nav.tabs button { flex: 1 1 0; min-width: 0; border: 0; border-radius: 0; background: none; color: var(--muted); padding: 10px 0 7px; font-size: 12px; letter-spacing: -.04em;
+                    border-bottom: 3px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  nav.tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+  .pager { flex: 1; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .pager::-webkit-scrollbar { display: none; }
+  .page { flex: 0 0 100%; width: 100%; scroll-snap-align: start; scroll-snap-stop: always; overflow-y: auto; overscroll-behavior-y: contain; padding: 10px 10px 48px; }
+  .page > .inner { max-width: 1040px; margin: 0 auto; }
   .unit-row .grow > div { overflow-wrap: anywhere; }
   .unit-row .tag { white-space: normal; }
-  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
-  section.panel h2 { font-size: 15px; margin: 0 0 10px; border-left: 4px solid var(--accent); padding-left: 8px; }
-  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
-  .filters input, .filters select, select, input[type=number] { width: 100%; padding: 5px 6px; border: 1px solid var(--line); border-radius: 4px; font: inherit; background: #fff; }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  section.panel h2 { font-size: 15px; margin: 0 0 8px; border-left: 4px solid var(--accent); padding-left: 8px; }
+  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+  .filters input, .filters select, select, input[type=number] { width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 4px; font: inherit; background: #fff; }
   .filters .full { grid-column: 1 / -1; }
   button { font: inherit; padding: 5px 10px; border: 1px solid var(--accent); background: #fff; color: var(--accent); border-radius: 4px; cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; }
   button:disabled { opacity: .4; cursor: default; }
-  button.small { padding: 2px 7px; font-size: 12px; }
+  button.small { padding: 4px 9px; font-size: 12px; }
   .btnlike { display: inline-block; padding: 5px 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 4px; cursor: pointer; }
-  .unit-list { max-height: 65vh; overflow: auto; border-top: 1px solid var(--line); }
-  .unit-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--line); }
-  .unit-row .name { font-weight: 600; }
-  .unit-row .meta { color: var(--muted); font-size: 12px; }
-  .unit-row .grow { flex: 1; min-width: 0; }
-  .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px; color: #fff; margin-right: 3px; line-height: 18px; white-space: nowrap; }
+  .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px; color: #fff; margin-right: 3px; line-height: 18px; white-space: nowrap; vertical-align: middle; }
   .tag.plain { background: #eee; color: #444; }
   .tag.eff { background: #f3ebe0; color: #5a3a10; }
   .tag.eff.enemy { background: #e8eef7; color: #1f4470; }
   .tag.eff.cond { border: 1px dashed #b08a50; }
   .tag.sp { background: #e6f2e8; color: #1d5a2c; }
-  .gap-item.info { border-left: 5px solid #9aa7b5; }
-  .gap-item.have { border-left: 5px solid var(--ok); }
-  #update-banner { margin: 12px 16px 0; padding: 8px 12px; border: 1px solid var(--ok); background: #e9f4ec; border-radius: 8px; font-size: 13px; display: flex; gap: 8px; align-items: flex-start; }
-  #update-banner[hidden] { display: none; }
-  #update-banner button { margin-left: auto; flex: none; }
-  .buff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
-  .bcard { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; min-width: 0; }
-  .bcard h3 { margin: 0 0 4px; font-size: 13.5px; }
+  /* アイコン（自作SVG） */
+  .wi { width: 30px; height: 30px; flex: none; vertical-align: middle; }
+  .ri { width: 24px; height: 24px; flex: none; vertical-align: middle; }
+  .wi.sm { width: 20px; height: 20px; } .ri.sm { width: 17px; height: 17px; }
+  .icons { display: inline-flex; gap: 2px; align-items: center; vertical-align: middle; flex: none; }
+  /* 編成 */
+  .slots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  @media (min-width: 720px) { .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .slot { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 7px 8px; min-height: 62px; }
+  .slot.empty { border: 2px dashed var(--line); background: transparent; color: var(--muted); justify-content: center; cursor: pointer; font-size: 14px; }
+  .slot.empty:active { background: #efe9dd; }
+  .slot .no { font-size: 11px; color: var(--muted); width: 12px; text-align: center; flex: none; }
+  .slot .main { flex: 1; min-width: 0; cursor: pointer; }
+  .uname { font-size: 16px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+  .slot .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .slot .acts { display: flex; flex-direction: column; gap: 4px; align-items: stretch; flex: none; }
+  .tog { padding: 5px 8px; border-radius: 14px; font-size: 12px; font-weight: 700; min-width: 74px; white-space: nowrap; }
+  .tog.on { background: var(--accent); color: #fff; }
+  .tog.off { background: #fff; color: var(--muted); border-color: #c9c2b4; }
+  .rm { border: 0; background: none; color: var(--muted); font-size: 18px; padding: 4px 6px; flex: none; }
+  /* 探す */
+  dialog.sheet { padding: 0; border: 0; width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; background: var(--bg); }
+  @media (min-width: 760px) { dialog.sheet { width: min(760px, 96vw); height: min(92dvh, 900px); margin: auto; border-radius: 10px; } }
+  dialog.sheet[open] { display: flex; flex-direction: column; }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .sheet-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--accent); color: #fff; }
+  .sheet-head b { flex: 1; font-size: 15px; }
+  .sheet-head button { background: transparent; color: #fff; border-color: rgba(255,255,255,.7); }
+  .sheet-body { padding: 8px 10px 0; flex: none; }
+  .sheet-body input#f-name { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 15px; }
+  .chips { display: flex; gap: 4px; overflow-x: auto; padding: 6px 0 2px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 36px; min-height: 34px; font-size: 12px; color: var(--ink); }
+  .chip.on { border-color: var(--accent); background: #f6e3dc; box-shadow: inset 0 0 0 1px var(--accent); }
+  .unit-list { flex: 1; overflow-y: auto; padding: 0 10px 30px; }
+  .unit-row { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .unit-row:active { background: #efe9dd; }
+  .unit-row.dim { opacity: .45; cursor: default; }
+  .unit-row .name { font-weight: 800; font-size: 15px; }
+  .unit-row .meta { color: var(--muted); font-size: 12px; }
+  .unit-row .grow { flex: 1; min-width: 0; }
+  .unit-row .pick { font-size: 12px; color: var(--accent); font-weight: 700; flex: none; }
+  /* カード */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
+  .bcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; min-width: 0; background: #fff; }
+  .bcard h3 { margin: 0 0 4px; font-size: 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .bline { padding: 3px 0; border-top: 1px dotted var(--line); overflow-wrap: anywhere; }
   .bline .k { display: inline-block; min-width: 5.5em; font-weight: 600; margin-right: 6px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 4px 0 2px; font-size: 12.5px; }
+  .stats b { font-size: 14px; }
+  .steps { margin: 4px 0 2px; padding-left: 16px; font-size: 12px; color: #444; }
+  details.more { display: inline; }
+  details.more > summary { display: inline; color: var(--accent); font-size: 11.5px; cursor: pointer; list-style: none; }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more[open] > summary { display: inline; }
+  details.more .list { display: block; padding: 2px 0 2px 10px; font-size: 11.5px; color: #555; }
   .src { color: var(--muted); font-size: 11.5px; }
   .down { color: var(--bad); font-weight: 600; }
-  .sp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
-  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  @media (max-width: 700px) { .slots { grid-template-columns: repeat(2, 1fr); } }
-  .slot { border: 1px dashed var(--line); border-radius: 6px; padding: 8px; min-height: 74px; font-size: 12px; position: relative; }
-  .slot.filled { border-style: solid; background: #fcfbf8; }
-  .slot .name { font-weight: 600; font-size: 13px; padding-right: 20px; }
-  .slot .x { position: absolute; top: 4px; right: 4px; }
-  .slot label { display: block; margin-top: 4px; color: var(--muted); }
-  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  th, td { border: 1px solid var(--line); padding: 5px 6px; vertical-align: top; text-align: left; }
-  th { background: #f1ede4; white-space: nowrap; }
-  td.num, th.num { text-align: right; white-space: nowrap; }
-  td.txt { min-width: 180px; }
-  .scroll { overflow-x: auto; }
   .up { color: var(--ok); font-weight: 600; }
   .muted { color: var(--muted); }
-  .over { text-decoration: line-through; color: var(--muted); }
-  .gap-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+  .ov-row { display: grid; grid-template-columns: 5.2em minmax(0, 1fr); gap: 6px; padding: 4px 0; border-top: 1px dotted var(--line); }
+  .ov-row .k { font-weight: 600; color: #555; font-size: 12px; }
+  .gap-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: #fff; }
   .gap-item.missing { border-left: 5px solid var(--bad); }
   .gap-item.partial { border-left: 5px solid var(--warn); }
   .gap-item.ok { border-left: 5px solid var(--ok); }
+  .gap-item.info { border-left: 5px solid #9aa7b5; }
+  .gap-item.have { border-left: 5px solid var(--ok); }
   .gap-item h3 { margin: 0 0 4px; font-size: 13.5px; }
-  .cand { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 12.5px; flex-wrap: wrap; }
+  .cand { display: flex; gap: 6px; align-items: center; padding: 5px 0; font-size: 12.5px; flex-wrap: wrap; border-top: 1px dotted var(--line); }
+  .cand b { font-size: 13.5px; }
   .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }
   .settings label { display: flex; gap: 6px; align-items: center; }
   .settings label input[type=number] { width: 90px; }
   textarea { width: 100%; min-height: 300px; font-family: ui-monospace, monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
-  dialog { border: 1px solid var(--line); border-radius: 8px; width: min(900px, 95vw); }
+  dialog#dlg { border: 1px solid var(--line); border-radius: 8px; width: min(900px, 95vw); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   details summary { cursor: pointer; }
   a { color: var(--accent); }
   ul.rules { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
-  @media (max-width: 700px) {
-    body { font-size: 13px; }
-    header { padding: 8px 12px; }
-    header .note { font-size: 11px; }
-    .top { padding: 8px 8px 0; }
-    main { padding: 8px; gap: 8px; }
-    section.panel { padding: 10px; margin-bottom: 8px; }
-    .unit-list { max-height: 55vh; }
-    .slot { min-height: 0; }
-    button.small { padding: 4px 9px; }
-  }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #444; }
+  .legend span { display: inline-flex; align-items: center; gap: 3px; }
+  #update-banner { margin: 8px 10px 0; padding: 8px 12px; border: 1px solid var(--ok); background: #e9f4ec; border-radius: 8px; font-size: 13px; display: flex; gap: 8px; align-items: flex-start; flex: none; }
+  #update-banner[hidden] { display: none; }
+  #update-banner button { margin-left: auto; flex: none; }
+  .hint { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="g-both" x1="0" y1="0" x2="1" y2="1"><stop offset=".5" stop-color="#d23b32"/><stop offset=".5" stop-color="#2c74d6"/></linearGradient>
+  <linearGradient id="g-both-l" x1="0" y1="0" x2="1" y2="1"><stop offset=".5" stop-color="#ff8f86"/><stop offset=".5" stop-color="#8cc0ff"/></linearGradient>
+  <linearGradient id="g-silver" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9c4d2"/></linearGradient>
+</defs></svg>
 <header>
   <h1>城プロRE 編成補助</h1>
-  <span class="note">データ: 城プロRE攻略wiki（scre.swiki.jp）より（2026-11-01 取得）。特技・計略などは効果の要約で、原文はwikiを参照してください。効果は自動で読み取ったもので、読み違いがあり得ます。非公式の個人制作ツールです。</span>
+  <span class="count" id="hdr-count"></span>
 </header>
-
+<nav class="tabs" id="tabs"></nav>
 <div id="update-banner" hidden></div>
-<div class="top">
+<div class="pager" id="pager">
+
+<div class="page" data-title="編成"><div class="inner">
+  <div class="slots" id="slots"></div>
+  <div class="hint">空き枠をタップすると城娘を探せます。名前をタップすると一覧のその城娘へ移動します。</div>
   <section class="panel">
-    <h2>編成（最大8体）</h2>
-    <div class="row" style="margin-bottom:8px">
+    <h2>まとめて読み込む</h2>
+    <div class="row" style="margin-bottom:6px">
       <label id="shot-wrap" hidden><span class="btnlike">スクショから読み込む</span><input type="file" id="shot" accept="image/*" hidden></label>
-      <input id="bulk" placeholder="名前をまとめて入力（読点・改行区切り）" style="flex:1;min-width:200px;padding:5px 6px;border:1px solid var(--line);border-radius:4px;font:inherit">
-      <button id="bulk-go">名前で読み込む</button>
       <button id="clear-party">編成を空にする</button>
     </div>
-    <div id="import-msg" class="muted" style="font-size:12px;margin-bottom:6px"></div>
-    <div class="slots" id="slots"></div>
+    <div class="row">
+      <input id="bulk" placeholder="名前をまとめて入力（読点・改行区切り）" style="flex:1;min-width:180px;padding:6px;border:1px solid var(--line);border-radius:4px;font:inherit">
+      <button id="bulk-go">名前で読み込む</button>
+    </div>
+    <div id="import-msg" class="muted" style="font-size:12px;margin-top:6px"></div>
   </section>
+  <section class="panel">
+    <h2>アイコンの見方</h2>
+    <div class="legend" id="legend"></div>
+  </section>
+</div></div>
+
+<div class="page" data-title="一覧"><div class="inner">
+  <div id="overview"></div>
+  <p class="hint">茶色・青のタグが計算に使っている効果、緑のタグが隠密無効や足止め数などの特殊効果です（点線枠は「〜する度に」などの条件付きで、上限値で計算）。</p>
+</div></div>
+
+<div class="page" data-title="バフ/デバフ"><div class="inner">
+  <p class="hint" style="margin-top:0">全員が互いの射程内にいる前提で、計算式どおり有効になるものだけを表示します。固定値は合計だけを出し、「内訳」で提供元を見られます。実数値は初期値（Lv・装備なし、最大化の巨大化補正あり）での目安です。</p>
+  <div class="grid" id="buffs"></div>
+  <h3 style="font-size:14px;margin:14px 0 6px">敵へのデバフ</h3>
+  <div id="debuffs"></div>
+  <h3 style="font-size:14px;margin:14px 0 6px">計略で加わる効果</h3>
+  <div id="strat-diff"></div>
+</div></div>
+
+<div class="page" data-title="不足と候補"><div class="inner">
+  <div class="row" style="margin-bottom:8px">
+    <label>候補の属性: <select id="g-attr" style="width:auto"></select></label>
+    <label>最低レア: <select id="g-rar" style="width:auto"><option value="0">指定なし</option><option>5</option><option>6</option><option>7</option></select></label>
+  </div>
+  <div id="gaps"></div>
+</div></div>
+
+<div class="page" data-title="特殊効果"><div class="inner">
+  <div id="sp-party"></div>
+  <h3 style="font-size:14px;margin:14px 0 6px">あると便利な特殊効果</h3>
+  <p class="hint" style="margin-top:0">候補の属性・レアは「不足と候補」の絞り込みを使います。</p>
+  <div class="grid" id="sp-checks"></div>
+</div></div>
+
+<div class="page" data-title="設定"><div class="inner">
+  <section class="panel">
+    <h2>計算の設定</h2>
+    <div class="settings">
+      <label>敵の防御 <input type="number" id="s-edef" min="0"></label>
+      <label>敵の攻撃 <input type="number" id="s-eatk" min="0"></label>
+      <label>巨大化回数（鎌の防御無視に使用） <input type="number" id="s-giant" min="0" max="5"></label>
+      <label><input type="checkbox" id="s-cond"> 条件付き効果（〜する度に、撃破時など）も上限値で含める</label>
+      <label><input type="checkbox" id="s-target"> 計略の「対象の〜」を発動者自身に掛けたものとして扱う</label>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>スクショ読み取り（任意）</h2>
+    <div class="settings">
+      <label>Anthropic APIキー <input type="password" id="s-key" autocomplete="off" placeholder="sk-ant-..." style="width:100%"></label>
+      <label>モデル <select id="s-model" style="width:auto"><option value="claude-haiku-5-5">Haiku 5.5（安い・1回0.03円ほど）</option><option value="claude-sonnet-5-5">Sonnet 5.5（高精度・1回1円弱）</option></select></label>
+    </div>
+    <p class="muted" style="font-size:12px;margin:4px 0 0">キーはこの端末のブラウザにだけ保存され、スクショを読み取るときにAnthropicへ直接送られます（このツールの運営側には送られません）。キーは専用のものを作り、Consoleで使用量を確認できる状態にしておくのがおすすめです。</p>
+  </section>
+  <section class="panel">
+    <h2>データ管理</h2>
+    <div class="row">
+      <button id="btn-edit">JSONを編集 / 読み込み</button>
+      <button id="btn-export">JSONを書き出し</button>
+      <button id="btn-copy">JSONをコピー</button>
+      <button id="btn-reset">wikiデータに戻す</button>
+    </div>
+    <p class="muted" style="font-size:12px">効果の読み違いを直したいときは「JSONを編集」で該当城娘の effects を書き換えてください。編集したデータはこのブラウザに保存されます。</p>
+    <p class="muted" style="font-size:12px"><span class="note">データ: 城プロRE攻略wiki（scre.swiki.jp）より（2026-11-01 取得）。特技・計略などは効果の要約で、原文はwikiを参照してください。効果は自動で読み取ったもので、読み違いがあり得ます。非公式の個人制作ツールです。</span></p>
+  </section>
+  <section class="panel">
+    <h2>計算ルール</h2>
+    <ul class="rules">
+      <li>同じ種類の割合バフ/デバフは、一番高いものだけ有効（説明文に「重複」とあるものは加算）。固定値は全て加算。</li>
+      <li>編成特技・所持特技・特技/計略は別系統なので、割合バフは系統ごとに掛け算で重なる。</li>
+      <li>攻撃 = ((初期攻撃×(1+編成%)＋編成固定)×(1+所持%)) ×(1+特技計略%)＋固定値、その後に計略などの攻撃倍率。乗算ごとに端数切り捨て。</li>
+      <li>ダメージ = (攻撃 − 敵防御) ×(1+与ダメ増)×(1+敵の被ダメ増)×(1+与えるダメージ増)。最低20。法術・鈴・杖・祓串は防御無視。</li>
+      <li>敵防御 = (防御×(1−特技計略の防御低下%) − 固定値低下) ×(1−防御無視%)。防御無視は特技計略の最大値＋鎌の武器種特性を加算。</li>
+      <li>変換バフ（「攻撃に防御の50%の値を加算」）と鼓舞バフ（「自身の攻撃の35%の値を射程内の城娘に加算」）は、割合・固定値の後に加算。加算元は他のバフ適用後の値。鼓舞は提供者自身には掛からないものとして計算。</li>
+      <li>攻撃速度・隙短縮は系統ごとに乗算。射程の位置関係は考慮せず、「射程内」の効果は全員に届くものとして扱う。</li>
+      <li>能力値は改壱・改弐のある城娘は一番上の段階の初期値。特殊能力は「特殊」をオンにしたときだけ計算に入る。</li>
+      <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。地形・装備・武器効果は未反映。</li>
+      <li>「巨大化する度に」の効果は最大化した値（☆1〜2は3回、☆3〜5は4回、☆6〜7は5回分）で計算し、「最大化時」の効果も含めています。能力値には最大化したときの巨大化補正（単属性は1回につき耐久・防御+22%、攻撃+18%、射程+16%、回復+12%、複合属性は+20%・+16%・+16%・+10%）を、編成・所持特技の後、特技・計略の前に掛けています。</li>
+      <li>武器種・近遠のアイコンはこのツール用に作ったもので、ゲームの画像ではありません。</li>
+    </ul>
+  </section>
+</div></div>
+
 </div>
-<main>
-  <div>
-    <section class="panel">
-      <h2>城娘を探す</h2>
+
+<dialog id="pick" class="sheet">
+  <div class="sheet-head"><b>城娘を探す</b><button id="pick-close" class="small">閉じる</button></div>
+  <div class="sheet-body">
+    <input id="f-name" placeholder="名前・特技/計略の文章で検索" autocomplete="off">
+    <div class="chips" id="chip-w"></div>
+    <div class="chips" id="chip-a"></div>
+    <details id="pick-more"><summary style="font-size:12.5px;color:var(--accent)">その他の絞り込み・並び替え</summary>
       <div class="filters">
-        <input id="f-name" class="full" placeholder="名前・特技/計略の文章で検索">
-        <select id="f-attr"></select>
-        <select id="f-weapon"></select>
+        <select id="f-attr" hidden></select>
+        <select id="f-weapon" hidden></select>
         <select id="f-range"><option value="">近/遠: すべて</option><option>近</option><option>遠</option><option>両</option></select>
         <select id="f-rarity"></select>
         <select id="f-effect" class="full"></select>
@@ -152,97 +280,13 @@
           <option value="rarity">並び: レア度（高い順）</option>
           <option value="effect">並び: 選んだ効果の値（高い順）</option>
         </select>
+        <button id="f-clear" class="full small">絞り込みを解除</button>
       </div>
-      <div class="muted" id="list-count"></div>
-      <div class="unit-list" id="unit-list"></div>
-    </section>
-
-    <section class="panel">
-      <h2>データ管理</h2>
-      <div class="row">
-        <button id="btn-edit">JSONを編集 / 読み込み</button>
-        <button id="btn-export">JSONを書き出し</button>
-        <button id="btn-copy">JSONをコピー</button>
-        <button id="btn-reset">wikiデータに戻す</button>
-      </div>
-      <p class="muted" style="font-size:12px">効果の読み違いを直したいときは「JSONを編集」で該当城娘の effects を書き換えてください。編集したデータはこのブラウザに保存されます。</p>
-    </section>
+    </details>
+    <div class="muted" id="list-count" style="font-size:12px;padding:4px 0"></div>
   </div>
-
-  <div>
-    <section class="panel">
-      <h2>一覧</h2>
-      <div class="scroll"><table id="overview"></table></div>
-      <p class="muted" style="font-size:12px;margin-bottom:0">茶色・青のタグが計算に使っている効果、緑のタグが隠密無効や足止め数などの特殊効果です（点線枠は「〜する度に」などの条件付きで、上限値で計算）。</p>
-    </section>
-
-    <section class="panel">
-      <h2>各城娘に実際にかかるバフ（全員が互いの射程内にいる前提）</h2>
-      <p class="muted" style="font-size:12px;margin-top:0">範囲バフと単体バフのうち計算式どおり有効になるものだけを、提供元と一緒に表示します。割合は同系統で一番高いもの（範囲より高い単体バフがあればそちら）、固定値と「+（〇〇の攻撃の35%）」の変換・鼓舞は全て加算です。</p>
-      <div class="buff-grid" id="buffs"></div>
-      <h3 style="font-size:14px;margin:14px 0 6px">敵へのデバフ（全て適用した値）</h3>
-      <div id="debuffs"></div>
-    </section>
-
-    <section class="panel">
-      <h2>計略のオン/オフによる変化</h2>
-      <div id="strat-sum" class="scroll"></div>
-      <div id="strat-diff" style="margin-top:8px"></div>
-    </section>
-
-    <section class="panel">
-      <h2>参考: 初期値での能力値計算</h2>
-      <details><summary style="font-size:12px">初期値（Lv・武器なし、最大化の巨大化補正あり）で計算した実数値を見る</summary>
-      <div class="scroll" style="margin-top:6px"><table id="calc"></table></div></details>
-      <details style="margin-top:8px">
-        <summary>適用されたバフ/デバフの内訳（重複・上書きの判定）</summary>
-        <div id="breakdown" style="margin-top:8px"></div>
-      </details>
-    </section>
-
-    <section class="panel">
-      <h2>不足しているバフ/デバフと補える候補</h2>
-      <div class="row" style="margin-bottom:8px">
-        <label>候補の属性:
-          <select id="g-attr" style="width:auto"></select>
-        </label>
-        <label>候補の最低レア:
-          <select id="g-rar" style="width:auto"><option value="0">指定なし</option><option>5</option><option>6</option><option>7</option></select>
-        </label>
-      </div>
-      <div id="gaps"></div>
-    </section>
-
-    <section class="panel">
-      <h2>計算ルールと設定</h2>
-      <div class="settings">
-        <label>敵の防御 <input type="number" id="s-edef" min="0"></label>
-        <label>敵の攻撃 <input type="number" id="s-eatk" min="0"></label>
-        <label>巨大化回数（鎌の防御無視に使用） <input type="number" id="s-giant" min="0" max="5"></label>
-        <label><input type="checkbox" id="s-cond"> 条件付き効果（〜する度に、撃破時など）も上限値で含める</label>
-        <label><input type="checkbox" id="s-target"> 計略の「対象の〜」を発動者自身に掛けたものとして扱う</label>
-      </div>
-      <h3 style="font-size:13.5px;margin:12px 0 4px">スクショ読み取り（任意）</h3>
-      <div class="settings">
-        <label>Anthropic APIキー <input type="password" id="s-key" autocomplete="off" placeholder="sk-ant-..." style="width:100%"></label>
-        <label>モデル <select id="s-model" style="width:auto"><option value="claude-haiku-5-5">Haiku 5.5（安い・1回0.03円ほど）</option><option value="claude-sonnet-5-5">Sonnet 5.5（高精度・1回1円弱）</option></select></label>
-      </div>
-      <p class="muted" style="font-size:12px;margin:4px 0 0">キーはこの端末のブラウザにだけ保存され、スクショを読み取るときにAnthropicへ直接送られます（このツールの運営側には送られません）。キーは専用のものを作り、Consoleで使用量を確認できる状態にしておくのがおすすめです。</p>
-      <ul class="rules">
-        <li>同じ種類の割合バフ/デバフは、一番高いものだけ有効（説明文に「重複」とあるものは加算）。固定値は全て加算。</li>
-        <li>編成特技・所持特技・特技/計略は別系統なので、割合バフは系統ごとに掛け算で重なる。</li>
-        <li>攻撃 = ((初期攻撃×(1+編成%)＋編成固定)×(1+所持%)) ×(1+特技計略%)＋固定値、その後に計略などの攻撃倍率。乗算ごとに端数切り捨て。</li>
-        <li>ダメージ = (攻撃 − 敵防御) ×(1+与ダメ増)×(1+敵の被ダメ増)×(1+与えるダメージ増)。最低20。法術・鈴・杖・祓串は防御無視。</li>
-        <li>敵防御 = (防御×(1−特技計略の防御低下%) − 固定値低下) ×(1−防御無視%)。防御無視は特技計略の最大値＋鎌の武器種特性を加算。</li>
-        <li>変換バフ（「攻撃に防御の50%の値を加算」）と鼓舞バフ（「自身の攻撃の35%の値を射程内の城娘に加算」）は、割合・固定値の後に加算。加算元は他のバフ適用後の値。鼓舞は提供者自身には掛からないものとして計算。</li>
-        <li>攻撃速度・隙短縮は系統ごとに乗算。射程の位置関係は考慮せず、「射程内」の効果は全員に届くものとして扱う。</li>
-        <li>能力値は改壱・改弐のある城娘は一番上の段階の初期値。特殊能力は「特殊能力発動中」にチェックしたときだけ計算に入る。</li>
-        <li>出典: wiki「検証」ページの「ステータス計算式」「ダメージ計算式」「特技・計略・武器の重複、競合」。地形・装備・武器効果は未反映。</li>
-        <li>「巨大化する度に」の効果は最大化した値（☆1〜2は3回、☆3〜5は4回、☆6〜7は5回分）で計算し、「最大化時」の効果も含めています。能力値には最大化したときの巨大化補正（単属性は1回につき耐久・防御+22%、攻撃+18%、射程+16%、回復+12%、複合属性は+20%・+16%・+16%・+10%）を、編成・所持特技の後、特技・計略の前に掛けています。</li>
-      </ul>
-    </section>
-  </div>
-</main>
+  <div class="unit-list" id="unit-list"></div>
+</dialog>
 
 <dialog id="dlg">
   <h3 style="margin-top:0">ユニットデータ（JSON）</h3>
@@ -361,7 +405,7 @@ const effText = e => e.ref ? `${(EFFECTS[e.type]?.label ?? e.type).replace("(固
 const targetText = t => ({ self:"自身", all:"全体", inrange:"射程内", near:"近接", far:"遠隔", target:"対象1体", enemy:"敵" }[t]
   ?? t.replace("weapon:", "").replace(/\|/g, "・").replace("attr:", "").replace("other:", "") + "城娘");
 const giantTxt = e => e.giant ? `（巨大化${e.giant}回分）` : "";
-const effTag = e => `<span class="tag eff${EFFECTS[e.type]?.enemy ? " enemy" : ""}${e.cond ? " cond" : ""}">${esc(targetText(e.target || "self"))}:${esc(effText(e))}</span>`;
+const effTag = e => `<span class="tag eff${EFFECTS[e.type]?.enemy ? " enemy" : ""}${e.cond ? " cond" : ""}">${e.target === "enemy" && effText(e).startsWith("敵") ? "" : esc(targetText(e.target || "self")) + ":"}${esc(effText(e))}</span>`;
 const fl = Math.floor;
 const weaponsOf = u => u.weapons || String(u.weapon || "").split("/");
 const isMagic = u => weaponsOf(u).some(w => MAGIC.includes(w));
@@ -499,17 +543,70 @@ function compute(p = party) {
   return { members, active, enemy, edefBase, eatk, taken, dealt, slow, erng, rows };
 }
 
+// ---- アイコン（このツール用に描いたSVG。ゲーム・wikiの画像は使っていない） ----
+// 武器の絵は 24×24 の座標で、柄を右下・先端を左上に向けて描く
+const D = "#1d1410";
+const WGLYPH = {
+  "刀": `<path d="M17.2 16Q8.4 11.4 2.8 2.8Q13.4 7 19.4 13.6Z" fill="currentColor"/><path d="M15.4 18.4L19.4 14.4" stroke-width="2"/><path d="M18.2 16.6L21.6 20" stroke-width="2.6"/>`,
+  "槍": `<path d="M21 21L9.6 9.6" stroke-width="1.8"/><path d="M2.4 2.4L10.2 6.4L11 11L6.4 10.2Z" fill="currentColor"/><path d="M7.4 12.6L12.6 7.4" stroke-width="1.6"/>`,
+  "槌": `<path d="M21 21L10.5 10.5" stroke-width="2"/><path d="M14.4 5.9L10.1 1.6L1.6 10.1L5.9 14.4Z" fill="currentColor"/><path d="M12.3 3.7L3.7 12.3" stroke="${D}" stroke-width="1"/>`,
+  "盾": `<path d="M12 2L20 5V11C20 16.5 16.5 20 12 22C7.5 20 4 16.5 4 11V5Z" stroke-width="1.8"/><path d="M12 5.4L17 7.3V11C17 14.6 15 17 12 18.6C9 17 7 14.6 7 11V7.3Z" fill="currentColor"/>`,
+  "拳": `<rect x="5" y="6" width="13" height="10" rx="3" fill="currentColor"/><path d="M8.6 6.4V10.4M11.6 6.4V10.4M14.6 6.4V10.4M5.4 12.4H11.6" stroke="${D}" stroke-width="1.1"/><rect x="7" y="16.8" width="10" height="4.6" rx="1" fill="currentColor"/>`,
+  "鎌": `<path d="M21 21L8.6 4.2" stroke-width="2"/><path d="M8.6 4.2C3.6 5.4 2 10.6 4.2 15.6C5 10.6 7.6 8 11.6 7.6Z" fill="currentColor"/>`,
+  "戦棍": `<path d="M21 21L11 11" stroke-width="2"/><circle cx="8" cy="8" r="4.4" fill="currentColor"/><path d="M8 1.4V3.2M1.4 8H3.2M3.2 3.2L4.6 4.6M12.8 3.2L11.6 4.4M3.2 12.8L4.4 11.6" stroke-width="1.6"/><circle cx="21.2" cy="21.2" r="1.3" fill="currentColor"/>`,
+  "双剣": `<path d="M3 3L16.6 16.6M21 3L7.4 16.6" stroke-width="2"/><path d="M14 19L19 14M5 14L10 19" stroke-width="1.7"/><path d="M17.4 17.4L21 21M6.6 17.4L3 21" stroke-width="2.4"/>`,
+  "ランス": `<path d="M2 2L17.2 11L11 17.2Z" fill="currentColor"/><path d="M18.2 10.2L10.2 18.2" stroke-width="2"/><path d="M15.6 15.6L21.2 21.2" stroke-width="2.4"/>`,
+  "弓": `<path d="M5 19Q0.6 0.6 19 5" stroke-width="2.2"/><path d="M5 19L19 5" stroke-width=".9"/><path d="M21 21L6.4 6.4" stroke-width="1.3"/><path d="M3.6 3.6L9.2 5.4L5.4 9.2Z" fill="currentColor"/><path d="M17.4 21L21 21L21 17.4" stroke-width="1.4"/>`,
+  "石弓": `<path d="M20.6 20.6L7 7" stroke-width="2.8"/><path d="M2.4 13.6Q3.4 3.4 13.6 2.4" stroke-width="2"/><path d="M2.4 13.6L10 10L13.6 2.4" stroke-width=".9"/><path d="M15.4 16.6L14.6 20" stroke-width="1.6"/>`,
+  "鉄砲": `<path d="M2.6 2.6L15 15" stroke-width="2.2"/><path d="M13.4 15.6L15.6 13.4L21.6 17.6L17.6 21.6Z" fill="currentColor"/><path d="M14.4 17.6L13 20.2" stroke-width="1.4"/><path d="M5.6 7.4L7.4 5.6" stroke-width="1.4"/>`,
+  "大砲": `<path d="M1.6 4.6L4.6 1.6L16.4 11.6L11.6 16.4Z" fill="currentColor"/><path d="M1.8 6.6L6.6 1.8" stroke-width="1.6"/><circle cx="15.6" cy="17" r="4.6" stroke-width="1.8" fill="${D}"/><path d="M15.6 12.4V21.6M11 17H20.2M12.4 13.8L18.8 20.2M18.8 13.8L12.4 20.2" stroke-width=".9"/>`,
+  "歌舞": `<ellipse cx="6.8" cy="18.2" rx="2.9" ry="2.2" transform="rotate(-22 6.8 18.2)" fill="currentColor"/><ellipse cx="16.6" cy="16" rx="2.9" ry="2.2" transform="rotate(-22 16.6 16)" fill="currentColor"/><path d="M9.4 17.4V5.6M19.2 15.2V3.4" stroke-width="1.6"/><path d="M9.4 4.8L19.2 2.6V6L9.4 8.2Z" fill="currentColor"/>`,
+  "法術": `<rect x="3.4" y="4" width="9" height="14.6" rx="1" transform="rotate(-14 7.9 11.3)" fill="currentColor" opacity=".75"/><rect x="10" y="5.4" width="9.2" height="15" rx="1" transform="rotate(10 14.6 12.9)" fill="currentColor"/><path d="M14.2 8.6L15.6 9.6L13.8 11.6L15.4 13L13.6 15L15 16.4" stroke="${D}" stroke-width="1.1" transform="rotate(10 14.6 12.9)"/>`,
+  "鈴": `<g fill="currentColor"><circle cx="12" cy="3.4" r="2.1"/><circle cx="9.2" cy="7.4" r="2.1"/><circle cx="14.8" cy="7.4" r="2.1"/><circle cx="6.6" cy="11.4" r="2.1"/><circle cx="12" cy="11.6" r="2.1"/><circle cx="17.4" cy="11.4" r="2.1"/></g><path d="M5.4 14.6H18.6" stroke-width="1.8"/><path d="M12 14.6V22" stroke-width="2.2"/>`,
+  "杖": `<path d="M17.6 21.6L11.2 8" stroke-width="2.2"/><path d="M11.2 8C9.2 3.8 12.8 1.2 15.6 3C18 4.8 16.2 8.2 13.6 7" stroke-width="2"/>`,
+  "祓串": `<path d="M12 2.4V22" stroke-width="1.8"/><path d="M11 4.4L5.6 6.6L9 8.8L3.8 11L7.4 13.2L2.8 15.6M13 4.4L18.4 6.6L15 8.8L20.2 11L16.6 13.2L21.2 15.6" stroke-width="1.6"/>`,
+  "本": `<path d="M11.2 6.4C8.8 4.6 5.4 4.4 2.6 5.4V19.2C5.4 18.2 8.8 18.4 11.2 20.2Z" fill="currentColor"/><path d="M12.8 6.4C15.2 4.6 18.6 4.4 21.4 5.4V19.2C18.6 18.2 15.2 18.4 12.8 20.2Z" fill="currentColor"/><path d="M5 8.6C6.6 8.2 8.2 8.4 9.4 9M5 11.6C6.6 11.2 8.2 11.4 9.4 12M14.6 9C15.8 8.4 17.4 8.2 19 8.6" stroke="${D}" stroke-width=".9"/>`,
+  "投剣": `<path d="M2.6 2.6L12.4 8.2L11.2 11.2L8.2 12.4Z" fill="currentColor"/><path d="M11 11L16.6 16.6" stroke-width="2.2"/><path d="M12.6 13.6L13.6 12.6M14.2 15.2L15.2 14.2" stroke="${D}" stroke-width="1"/><circle cx="18.8" cy="18.8" r="2.3" stroke-width="1.6"/>`,
+  "鞭": `<path d="M15.2 15.2C9.6 19.4 3.2 15.8 4.2 10C5.2 4.2 12.6 2.6 15 6.6C17.2 10.6 12 14.4 8.8 12C6.4 10.2 8.2 6.6 11.4 7.6" stroke-width="1.5"/><path d="M15.2 15.2L21 21" stroke-width="2.8"/><path d="M11.4 7.6Q14 9 12.2 10.6" stroke-width="1.1"/>`,
+  "陣貝": `<path d="M2.8 3.6C10 1.6 17.2 6 19.4 13L21.2 20.8L13.6 18.6C6.8 16.6 2.2 10.8 2.8 3.6Z" fill="currentColor"/><path d="M5.8 5.4C10.8 5.6 14.4 8.8 15.6 13.6M4.6 8.6C8 9.8 10.6 12.2 11.8 15.6M8.8 3.8C13 5 16.4 8.2 17.6 12.4" stroke="${D}" stroke-width="1"/>`,
+  "軍船": `<path d="M2.4 14.6H21.6L18.2 20.6H5.8Z" fill="currentColor"/><path d="M12 2V14.6" stroke-width="1.6"/><rect x="6.6" y="3.6" width="10.8" height="8.6" rx=".6" fill="currentColor"/><path d="M6.8 6.4H17.2M6.8 9.2H17.2M9.4 3.8V12M14.6 3.8V12" stroke="${D}" stroke-width=".8"/>`,
+  "茶器": `<path d="M2.6 10.6H16.8C16.8 15.8 14 19 9.7 19C5.4 19 2.6 15.8 2.6 10.6Z" fill="currentColor"/><path d="M7.4 19.4H12V21.4H7.4Z" fill="currentColor"/><path d="M4.4 12.2H15" stroke="${D}" stroke-width="1"/><rect x="18" y="5" width="3.6" height="8.4" rx="1.4" fill="currentColor"/><path d="M19.8 13.4V19.6" stroke-width="1.8"/><path d="M8 7.6Q7 5.8 8.4 4.2M11.4 7.6Q10.4 5.8 11.8 4.2" stroke-width="1" opacity=".7"/>`,
+  "その他": `<circle cx="6" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="18" cy="12" r="2" fill="currentColor"/>`,
+};
+const RANGE_OF_W = w => ["弓","石弓","鉄砲","大砲","歌舞","法術","鈴","杖","祓串","本"].includes(w) ? "遠" : ["投剣","鞭","陣貝","軍船","茶器"].includes(w) ? "両" : ["刀","槍","槌","盾","拳","鎌","戦棍","双剣","ランス"].includes(w) ? "近" : "";
+const RCOL = { "近": "#d23b32", "遠": "#2c74d6", "両": "url(#g-both)" };
+// 武器種: 黒い菱形の枠（近接は赤、遠隔は青、両用は赤青）に銀色の武器
+function wIcon(w, cls = "", rng = "") {
+  const g = WGLYPH[w] || WGLYPH["その他"], col = RCOL[RANGE_OF_W(w) || rng] || "#8a8a8a";
+  return `<svg class="wi ${cls}" viewBox="0 0 32 32" role="img" aria-label="${esc(w)}"><title>${esc(w)}</title>`
+    + `<path d="M16 1.2L30.8 16L16 30.8L1.2 16Z" fill="#241a15" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>`
+    + `<g transform="translate(4 4)" fill="none" stroke="url(#g-silver)" stroke-linecap="round" stroke-linejoin="round" color="#ece8f2" stroke-width="1.6">${g.replace(/fill="currentColor"/g, 'fill="url(#g-silver)" stroke="none"')}</g></svg>`;
+}
+// 近/遠/両: 配置マス（赤＝近接、青＝遠隔、赤青＝両用）
+function rIcon(r, cls = "") {
+  const c = { "近": ["#d23b32", "#ff9a90"], "遠": ["#2c74d6", "#9ccaff"], "両": ["url(#g-both)", "url(#g-both-l)"] }[r];
+  if (!c) return "";
+  const lab = { "近": "近接", "遠": "遠隔", "両": "両用" }[r];
+  return `<svg class="ri ${cls}" viewBox="0 0 24 24" role="img" aria-label="${lab}"><title>${lab}</title>`
+    + `<ellipse cx="12" cy="15.6" rx="11" ry="6.8" fill="${c[0]}"/><ellipse cx="12" cy="15.6" rx="8.4" ry="4.8" fill="none" stroke="${c[1]}" stroke-width="1.1"/>`
+    + `<path d="M7.6 16.2V9.2L9.2 6.6L10.4 9H13.6L14.8 6.6L16.4 9.2V16.2Z" fill="${c[0]}" stroke="${c[1]}" stroke-width="1"/>`
+    + `<path d="M10.2 11.8H11.2M12.8 11.8H13.8" stroke="${c[1]}" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+}
+const unitIcons = (u, cls = "") => `<span class="icons">${weaponsOf(u).map(w => wIcon(w, cls, u.range)).join("")}${rIcon(u.range, cls)}</span>`;
+
 // ---- 描画 ----
 function fill(sel, vals, first) {
   const cur = sel.value;
   sel.innerHTML = `<option value="">${first}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join("");
   sel.value = cur;
 }
+const ATTR_ORDER = ["平", "平山", "山", "水", "地獄", "無"];
+const WEAPON_ORDER = ["刀","槍","槌","盾","拳","鎌","戦棍","双剣","ランス","弓","石弓","鉄砲","大砲","歌舞","法術","鈴","杖","祓串","本","投剣","鞭","陣貝","軍船","茶器","その他"];
 function renderFilters() {
-  const order = ["平", "平山", "山", "水", "地獄", "無"];
-  const attrs = [...new Set(units.flatMap(u => u.attr || []))].sort((a, b) => (order.indexOf(a) + 99 * (order.indexOf(a) < 0)) - (order.indexOf(b) + 99 * (order.indexOf(b) < 0)));
+  const rank = (o, x) => { const i = o.indexOf(x); return i < 0 ? 99 : i; };
+  const attrs = [...new Set(units.flatMap(u => u.attr || []))].sort((a, b) => rank(ATTR_ORDER, a) - rank(ATTR_ORDER, b));
   fill($("f-attr"), attrs, "属性: すべて"); fill($("g-attr"), attrs, "指定なし");
-  const wl = [...new Set(units.flatMap(weaponsOf))].sort((a, b) => (a === "その他") - (b === "その他"));
+  const wl = [...new Set(units.flatMap(weaponsOf))].sort((a, b) => rank(WEAPON_ORDER, a) - rank(WEAPON_ORDER, b));
   fill($("f-weapon"), wl, "武器種: すべて");
   fill($("f-rarity"), [...new Set(units.map(u => u.rarity))].sort((a, b) => b - a), "レア度: すべて");
   const fe = $("f-effect"), cur = fe.value;
@@ -520,6 +617,18 @@ function renderFilters() {
   units.forEach(u => new Set(allTags(u).map(t => t.tag)).forEach(t => counts[t] = (counts[t] || 0) + 1));
   tg.innerHTML = `<option value="">特殊効果: すべて</option>` + Object.keys(counts).map(t => `<option value="${esc(t)}">${esc(t)}（${counts[t]}体）</option>`).join("");
   tg.value = curT;
+  renderChips();
+  $("legend").innerHTML = WEAPON_ORDER.filter(w => w !== "その他").map(w => `<span>${wIcon(w, "sm")}${esc(w)}</span>`).join("")
+    + ["近", "遠", "両"].map(r => `<span>${rIcon(r, "sm")}${{ "近": "近接", "遠": "遠隔", "両": "両用" }[r]}</span>`).join("");
+}
+// 武器種・属性はタップで選ぶチップ（中身は隠しselectと同期）
+function renderChips() {
+  const w = $("f-weapon").value, a = $("f-attr").value;
+  const ws = [...$("f-weapon").options].slice(1).map(o => o.value);
+  $("chip-w").innerHTML = `<button class="chip ${w ? "" : "on"}" data-chip-w="">全武器</button>` + ws.map(x => `<button class="chip ${w === x ? "on" : ""}" data-chip-w="${esc(x)}" title="${esc(x)}">${wIcon(x, "sm")}</button>`).join("");
+  const as = [...$("f-attr").options].slice(1).map(o => o.value);
+  $("chip-a").innerHTML = `<button class="chip ${a ? "" : "on"}" data-chip-a="">全属性</button>` + as.map(x => `<button class="chip ${a === x ? "on" : ""}" data-chip-a="${esc(x)}"><span class="tag" style="background:${attrColor(x)};margin:0">${esc(x)}</span></button>`).join("")
+    + ["近", "遠", "両"].map(r => `<button class="chip ${$("f-range").value === r ? "on" : ""}" data-chip-r="${r}" title="${r}">${rIcon(r, "sm")}</button>`).join("");
 }
 
 function matchTarget(e, ft) {
@@ -532,8 +641,9 @@ function effectValue(u, type, ft) {
   return Math.max(0, ...allEffects(u).filter(e => e.type === type && matchTarget(e, ft)).map(e => e.value));
 }
 
-const LIST_MAX = 200;
+const LIST_MAX = 150;
 function renderList() {
+  if (!$("pick").open) return;
   const q = $("f-name").value.trim(), a = $("f-attr").value, w = $("f-weapon").value, rg = $("f-range").value,
         ra = $("f-rarity").value, ef = $("f-effect").value, ft = $("f-target").value, sort = $("f-sort").value, tgf = $("f-tag").value;
   let list = units.filter(u =>
@@ -544,38 +654,54 @@ function renderList() {
   const key = { atk: u => -(u.atk ?? -1), def: u => -(u.def ?? -1), hp: u => -(u.hp ?? -1), rng: u => -(u.rng ?? -1),
                 rarity: u => -u.rarity, effect: u => -effectValue(u, ef, ft), no: u => Number(u.id) }[sort];
   list.sort(key ? (x, y) => key(x) - key(y) || Number(x.id) - Number(y.id) : (x, y) => x.name.localeCompare(y.name, "ja"));
-  $("list-count").textContent = `${list.length} 体` + (list.length > LIST_MAX ? `（先頭${LIST_MAX}体を表示。条件で絞り込んでください）` : "");
-  const full = party.length >= 8;
+  const nf = [a, w, rg, ra, ef, ft, tgf].filter(Boolean).length;
+  $("list-count").textContent = `${list.length} 体` + (nf ? `（絞り込み ${nf}件）` : "") + (list.length > LIST_MAX ? `・先頭${LIST_MAX}体を表示` : "");
   $("unit-list").innerHTML = list.slice(0, LIST_MAX).map(u => {
     const inParty = party.some(p => p.id === u.id);
-    const effs = allEffects(u).filter(e => (!ef || e.type === ef) && matchTarget(e, ft)).slice(0, 8).map(effTag).join("")
-      + [...new Map(allTags(u).filter(t => !tgf || t.tag === tgf).map(t => [t.tag, t])).values()].map(spTag).join("");
+    const effs = allEffects(u).filter(e => (!ef || e.type === ef) && matchTarget(e, ft)).slice(0, 4).map(effTag).join("")
+      + [...new Map(allTags(u).filter(t => !tgf || t.tag === tgf).map(t => [t.tag, t])).values()].slice(0, 3).map(spTag).join("");
     const stat = u.atk == null ? "能力値データなし" : `耐${u.hp} 攻${u.atk} 防${u.def} 射${u.rng}`;
-    return `<div class="unit-row">
+    return `<div class="unit-row ${inParty ? "dim" : ""}" ${inParty ? "" : `data-add="${esc(u.id)}"`}>
+      ${unitIcons(u)}
       <div class="grow">
-        <div>${attrTags(u)}<span class="name">${esc(u.name)}</span> <span class="tag plain">★${u.rarity}</span><span class="tag plain">${esc(u.weapon)}</span><span class="tag plain">${esc(u.range)}</span>${k2Tag(u)}</div>
+        <div>${attrTags(u)}<span class="name">${esc(u.name)}</span> <span class="tag plain">★${u.rarity}</span>${k2Tag(u)}</div>
         <div class="meta">${stat}</div>
         <div>${effs}</div>
       </div>
-      <button class="small" data-add="${esc(u.id)}" ${inParty || full ? "disabled" : ""}>${inParty ? "編成中" : "追加"}</button>
+      <span class="pick">${inParty ? "編成中" : "選ぶ"}</span>
     </div>`;
   }).join("");
 }
+function openPick() {
+  if (party.length >= 8) return;
+  const d = $("pick");
+  if (!d.open) { try { d.showModal(); } catch { d.setAttribute("open", ""); } }
+  renderChips(); renderList();
+  $("unit-list").scrollTop = 0;
+}
+function closePick() { const d = $("pick"); if (d.open) { try { d.close(); } catch { d.removeAttribute("open"); } } }
 
-function renderSlots() {
+const hasStrat = u => !!(u.strategy?.text && u.strategy.text !== "なし");
+const hasSp = u => !!(u.specialAbility?.text && u.specialAbility.text !== "なし");
+function renderSlots(res) {
   let html = "";
   for (let i = 0; i < 8; i++) {
-    const p = party[i], u = p && byId(p.id);
-    html += u ? `<div class="slot filled">
-        <button class="small x" data-rm="${i}" title="外す">×</button>
-        <div>${attrTags(u)}</div><div class="name">${esc(u.name)}</div>
-        <div class="muted">★${u.rarity}・${esc(u.weapon)}・${esc(u.range)}</div>${k2Tag(u)}
-        <label><input type="checkbox" data-strat="${i}" ${p.strat ? "checked" : ""}> 計略発動中として計算</label>
-        ${u.specialAbility?.text ? `<label><input type="checkbox" data-sp="${i}" ${p.sp ? "checked" : ""}> 特殊能力発動中として計算</label>` : ""}
-        <div>${[...new Map(allTags(u).map(t => [t.tag, t])).values()].map(spTag).join("")}</div>
-      </div>` : `<div class="slot muted">空き</div>`;
+    const p = party[i], u = p && byId(p.id), x = u && res.rows.find(r => r.u === u);
+    html += u ? `<div class="slot">
+        ${unitIcons(u)}
+        <div class="main" data-goto="${esc(u.id)}">
+          <div class="uname">${esc(u.name)}</div>
+          <div class="sub">${attrTags(u)}★${u.rarity}${x && u.atk != null ? `・攻${x.atk}・1撃${x.dmg}` : ""}</div>${k2Tag(u)}
+        </div>
+        <div class="acts">
+          ${hasStrat(u) ? `<button class="tog ${p.strat ? "on" : "off"}" data-tog-strat="${i}">計略 ${p.strat ? "ON" : "OFF"}</button>` : ""}
+          ${hasSp(u) ? `<button class="tog ${p.sp ? "on" : "off"}" data-tog-sp="${i}">特殊 ${p.sp ? "ON" : "OFF"}</button>` : ""}
+        </div>
+        <button class="rm" data-rm="${i}" title="外す" aria-label="外す">×</button>
+      </div>` : `<div class="slot empty" data-open-pick="${i}">＋ 城娘を探す</div>`;
   }
   $("slots").innerHTML = html;
+  $("hdr-count").textContent = `編成 ${party.length}/8`;
 }
 
 function cell(block) {
@@ -587,73 +713,44 @@ function cell(block) {
   return text + (has ? "<div>" + (block.effects || []).map(effTag).join("") + tags + "</div>" : "");
 }
 function renderOverview(res) {
-  if (!res.members.length) { $("overview").innerHTML = "<tr><td class='muted'>城娘を追加すると表示されます</td></tr>"; return; }
-  $("overview").innerHTML = `<tr><th>名前</th><th>属性</th><th>武器種</th><th>近/遠</th><th>特技</th><th>計略</th><th>編成特技</th><th>所持特技</th><th>大破・特殊攻撃</th><th>特殊能力</th></tr>` +
-    res.members.map(({ u }) => `<tr><td><b><a href="${WIKI + encodeURIComponent(u.name)}" target="_blank" rel="noopener">${esc(u.name)}</a></b><br><span class="muted">★${u.rarity}${u.kai ? "・改" + esc(u.kai) : ""}</span>${k2Tag(u)}</td>
-      <td>${attrTags(u)}</td><td>${esc(u.weapon)}${u.weaponRaw && u.weaponRaw !== u.weapon ? `<br><span class="muted">${esc(u.weaponRaw)}</span>` : ""}${isMagic(u) ? '<br><span class="muted">術攻撃</span>' : ""}</td><td>${esc(u.range)}</td>
-      <td class="txt">${cell(u.skill)}</td><td class="txt">${cell(u.strategy)}</td><td class="txt">${cell(u.formation)}</td>
-      <td class="txt">${cell(u.held)}</td><td class="txt">${cell(u.specialAttack)}</td><td class="txt">${cell(u.specialAbility)}</td></tr>`).join("");
-}
-
-const pc = v => v ? `<span class="up">+${v}%</span>` : '<span class="muted">-</span>';
-function pctBreak(g) {
-  const parts = [["編成", g.formation.total], ["所持", g.held.total], ["特技計略", g.normal.total]].filter(x => x[1]);
-  return parts.length ? parts.map(([k, v]) => `<span class="up">+${v}%</span><span class="muted" style="font-size:11px">${k}</span>`).join("<br>") : '<span class="muted">-</span>';
-}
-function renderCalc(res) {
-  if (!res.rows.length) { $("calc").innerHTML = "<tr><td class='muted'>城娘を追加すると表示されます</td></tr>"; $("breakdown").innerHTML = ""; return; }
-  const e = res.enemy, tot = g => ["formation", "held", "normal"].map(k => g[k].total).filter(Boolean).join("+") || 0;
-  $("calc").innerHTML = `<tr><th>名前</th><th class="num">初期攻撃</th><th class="num">攻撃%</th><th class="num">攻撃固定</th><th class="num">変換・鼓舞</th><th class="num">最終攻撃</th>
-      <th class="num">最終防御</th><th class="num">最終耐久</th><th class="num">射程</th><th class="num">与ダメ</th><th class="num">攻速</th><th class="num">隙短縮</th><th class="num">被ダメ軽減</th>
-      <th class="num">受ける敵防御</th><th class="num">1撃の目安</th></tr>` +
-    res.rows.map(x => `<tr><td><b>${esc(x.u.name)}</b>${x.magic ? ' <span class="tag plain">防御無視</span>' : x.ignore ? ` <span class="tag plain">防御${x.ignore}%無視</span>` : ""}</td>
-      <td class="num">${x.u.atk ?? "?"}</td><td class="num">${pctBreak(x.atkS.p)}</td>
-      <td class="num">${(x.atkS.f.formation.total + x.atkS.f.held.total + x.atkS.f.normal.total) ? '<span class="up">+' + (x.atkS.f.formation.total + x.atkS.f.held.total + x.atkS.f.normal.total) + "</span>" : '<span class="muted">-</span>'}</td>
-      <td class="num">${(() => { const v = x.refs.filter(e => e.type === "atk_flat").reduce((a, e) => a + e.value, 0); return v ? '<span class="up">+' + v + "</span>" : '<span class="muted">-</span>'; })()}</td>
-      <td class="num"><b>${x.atk}</b></td><td class="num">${x.def}</td><td class="num">${x.hp}</td><td class="num">${x.rng}</td>
-      <td class="num">${pc(x.dmgUp)}${x.dmgUp2 ? "<br>" + pc(x.dmgUp2) + '<span class="muted" style="font-size:11px">与える</span>' : ""}</td>
-      <td class="num">${pc(x.speed)}</td><td class="num">${pc(x.gap)}</td><td class="num">${pc(x.cut)}</td>
-      <td class="num">${x.edef}</td><td class="num"><b>${x.dmg}</b></td></tr>`).join("") +
-    `<tr><td colspan="15" class="muted">敵: 防御 ${settings.edef} → ${res.edefBase} ／ 攻撃 ${settings.eatk} → ${res.eatk} ／ 被ダメージ +${res.taken}% ／ 与ダメージ −${res.dealt}% ／ 移動速度 −${res.slow}%。能力値は初期値に最大化の巨大化補正を掛けたもの（Lv・装備なし）です。</td></tr>`;
-
-  // 内訳
-  const types = Object.keys(EFFECTS).filter(t => res.active.some(a => a.type === t));
-  let html = "<table><tr><th>効果</th><th>提供元</th><th>判定</th></tr>";
-  for (const t of types) {
-    const list = res.active.filter(a => a.type === t);
-    const used = EFFECTS[t].enemy ? new Set([...res.enemy[t].used].map(e => e.orig || e)) : new Set(res.rows.flatMap(x => {
-      const r = t === "def_ignore" || t === "atk_mult" || t === "dmg_up2" ? resolve(x.mine.filter(e => t !== "def_ignore" || e.from === x.u), t) : byGroups(x.mine, t);
-      return [...r.used].map(e => e.orig || e);
-    }));
-    html += list.map((a, i) => {
-      const reach = EFFECTS[t].enemy || res.rows.some(x => x.mine.some(m => m === a || m.orig === a));
-      const ok = used.has(a);
-      const note = !reach ? "対象の城娘が編成にいない" : ok ? (a.stack || t.endsWith("_flat") ? "加算" : "採用") : "同系統のより高い効果に上書き";
-      const grp = { formation: "編成", held: "所持", normal: "特技計略" }[a.group];
-      return `<tr>${i === 0 ? `<td rowspan="${list.length}">${EFFECTS[t].label}</td>` : ""}
-        <td class="${ok ? "" : "over"}">${esc(a.from.name)}（${a.sourceLabel}・${esc(targetText(a.target || "self"))}）${esc(effText(a))}${giantTxt(a)}${a.cond ? "（条件付き）" : ""} <span class="muted">[${grp}]</span></td>
-        <td class="${ok ? "up" : "muted"}">${note}</td></tr>`;
-    }).join("");
-  }
-  $("breakdown").innerHTML = html + "</table>";
+  if (!res.members.length) { $("overview").innerHTML = "<p class='muted'>城娘を編成すると表示されます</p>"; return; }
+  const rows = [["特技", "skill"], ["計略", "strategy"], ["編成特技", "formation"], ["所持特技", "held"], ["大破・特殊", "specialAttack"], ["特殊能力", "specialAbility"]];
+  $("overview").innerHTML = `<div class="grid">` + res.members.map(({ u }) => `<div class="bcard" id="ov-${esc(u.id)}">
+      <h3>${unitIcons(u)}<span class="uname">${esc(u.name)}</span></h3>
+      <div class="src">${attrTags(u)}★${u.rarity}${u.kai ? "・改" + esc(u.kai) : ""}・${esc(u.weapon)}${u.weaponRaw && u.weaponRaw !== u.weapon ? `（${esc(u.weaponRaw)}）` : ""}・${esc(u.range)}${isMagic(u) ? "・術攻撃" : ""}
+        ・<a href="${WIKI + encodeURIComponent(u.name)}" target="_blank" rel="noopener">wiki</a> ${k2Tag(u)}</div>
+      <div class="stats"><span>耐 ${u.hp ?? "?"}</span><span>攻 ${u.atk ?? "?"}</span><span>防 ${u.def ?? "?"}</span><span>射 ${u.rng ?? "?"}</span><span class="muted">（初期値）</span></div>
+      ${rows.map(([k, key]) => `<div class="ov-row"><span class="k">${k}</span><div>${cell(u[key])}</div></div>`).join("")}
+    </div>`).join("") + `</div>`;
 }
 
 // ---- 各城娘にかかるバフ（実数値ではなく「+60%」「+（〇〇の攻撃の35%）」の形で） ----
 const GL = { formation: "編成", held: "所持", normal: "" };
 const srcOf = (e, u) => `${esc(e.from.name)}${e.from === u ? "（自身）" : ""}・${e.sourceLabel}`;
 const refWho = (e, u) => e.ref.frm === "recv" ? "各自" : e.from === u ? "自身" : esc(e.from.name);
-// 1体分の有効なバフを {cat, text} の並びにする（表示と計略オン/オフの比較に共用）
+const srcLine = (e, u, grp) => `${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}`;
+// 固定値は合計だけを出し、内訳は開いて見る
+function flatSum(cat, list, u, sign = "+") {
+  if (!list.length) return null;
+  const sum = list.reduce((a, x) => a + x.e.value, 0), cls = sign === "+" ? "up" : "down";
+  if (list.length === 1) return { cat, html: `<span class="${cls}">${sign}${sum}</span> <span class="src">${srcLine(list[0].e, u, list[0].g)}</span>` };
+  return { cat, html: `<span class="${cls}">${sign}${sum}</span> <span class="src">固定値の合計（${list.length}件）</span> <details class="more"><summary>内訳 ▾</summary><span class="list">${list.map(x => `${sign}${x.e.value} ${srcLine(x.e, u, x.g)}`).join("<br>")}</span></details>` };
+}
+// 1体分の有効なバフを {cat, html} の並びにする（表示と計略で加わる効果の比較に共用）
 function buffItems(x) {
   const u = x.u, out = [];
-  const push = (cat, sign, e, unit, grp) => out.push({ cat, html: `<span class="${sign === "+" ? "up" : "down"}">${sign}${e.value}${unit}</span> <span class="src">${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
-  const groups = (cat, g, unit) => { for (const k of ["formation", "held", "normal"]) if (g[k]) for (const e of g[k].used) push(cat, "+", e, unit, k); };
+  const push = (cat, e, unit, grp) => out.push({ cat, html: `<span class="up">+${e.value}${unit}</span> <span class="src">${srcLine(e, u, grp)}</span>` });
+  const groups = (cat, g, unit) => { for (const k of ["formation", "held", "normal"]) if (g[k]) for (const e of g[k].used) push(cat, e, unit, k); };
+  const flats = g => ["formation", "held", "normal"].flatMap(k => [...g[k].used].map(e => ({ e, g: k })));
   for (const [k, label] of [["atk", "攻撃"], ["def", "防御"], ["hp", "耐久"], ["rng", "射程"], ["heal", "回復"]]) {
-    groups(label, x.st[k].p, "%"); groups(label, x.st[k].f, "");
+    groups(label, x.st[k].p, "%");
+    const f = flatSum(label, flats(x.st[k].f), u); if (f) out.push(f);
     for (const e of x.refs.filter(e => e.type === k + "_flat"))
       out.push({ cat: label, html: `<span class="up">+（${refWho(e, u)}の${STAT_JA[e.ref.stat]}の${e.pctEff}%）</span> <span class="src">${srcOf(e, u)}${e.kobu ? "・鼓舞" : ""}${e.kmul && e.kmul !== 1 ? `（${e.ref.pct}%×鼓舞効果${e.kmul}倍）` : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
   }
+  for (const e of x.mult.used) push("攻撃", e, "%（倍率）");
   groups("与ダメージ", x.upG, "%");
-  for (const e of x.up2.used) push("与えるダメージ", "+", e, "%");
+  for (const e of x.up2.used) push("与えるダメージ", e, "%");
   groups("攻撃速度", x.speedG, "%"); groups("隙短縮", x.gapG, "%"); groups("被ダメ軽減", x.cutG, "%");
   if (isMagic(u)) out.push({ cat: "防御無視", html: `<b>術攻撃</b> <span class="src">武器種</span>` });
   else {
@@ -664,50 +761,89 @@ function buffItems(x) {
 }
 function enemyItems(res) {
   const out = [], e = res.enemy;
-  const add = (cat, g, unit, sign = "−") => { for (const k of ["formation", "held", "normal"]) for (const x of g[k].used)
+  const pct = (cat, g, sign = "−") => { for (const k of ["formation", "held", "normal"]) for (const x of g[k].used)
     out.push({ cat, html: x.ref ? `<span class="down">−（${esc(x.from.name)}の${STAT_JA[x.ref.stat]}の${x.ref.pct}%）</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>`
-      : `<span class="${sign === "+" ? "up" : "down"}">${sign}${x.value}${unit}</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${GL[k] ? "［" + GL[k] + "］" : ""}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>` }); };
-  add("防御", e.enemy_def, "%"); add("防御", e.enemy_def_flat, ""); add("攻撃", e.enemy_atk, "%"); add("攻撃", e.enemy_atk_flat, "");
-  add("被ダメージ", e.enemy_taken, "%", "+"); add("与ダメージ", e.enemy_dealt, "%"); add("移動速度", e.enemy_slow, "%"); add("射程", e.enemy_rng, "%");
+      : `<span class="${sign === "+" ? "up" : "down"}">${sign}${x.value}%</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${GL[k] ? "［" + GL[k] + "］" : ""}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>` }); };
+  const flat = (cat, g) => {
+    const list = ["formation", "held", "normal"].flatMap(k => [...g[k].used].map(x => ({ e: x.orig && x.ref ? { ...x.orig, value: x.value } : x, g: k })));
+    const plain = list.filter(x => !x.e.ref), refs = list.filter(x => x.e.ref);
+    const f = flatSum(cat, plain, null, "−"); if (f) out.push(f);
+    for (const { e: x } of refs) out.push({ cat, html: `<span class="down">−（${esc(x.from.name)}の${STAT_JA[x.ref.stat]}の${x.ref.pct}%）</span> <span class="src">${esc(x.from.name)}・${x.sourceLabel}${giantTxt(x)}${x.cond ? "（条件付き）" : ""}</span>` });
+  };
+  pct("防御", e.enemy_def); flat("防御", e.enemy_def_flat); pct("攻撃", e.enemy_atk); flat("攻撃", e.enemy_atk_flat);
+  pct("被ダメージ", e.enemy_taken, "+"); pct("与ダメージ", e.enemy_dealt); pct("移動速度", e.enemy_slow); pct("射程", e.enemy_rng);
   return out;
 }
 const CATS = ["攻撃", "防御", "耐久", "射程", "回復", "与ダメージ", "与えるダメージ", "攻撃速度", "隙短縮", "被ダメ軽減", "防御無視"];
+const ECATS = ["防御", "攻撃", "被ダメージ", "与ダメージ", "移動速度", "射程"];
 function itemLines(items, cats, empty) {
   const html = cats.map(c => { const xs = items.filter(i => i.cat === c); return xs.length ? `<div class="bline"><span class="k">${c}</span>${xs.map(i => i.html).join("<br>")}</div>` : ""; }).join("");
   return html || `<div class="muted" style="font-size:12px">${empty}</div>`;
 }
+// 実数値の内訳（初期値→編成→所持→巨大化→特技計略→変換・鼓舞→倍率）
+function statSteps(x, k) {
+  const u = x.u, s = x.st[k], gm = giantMul(u, k);
+  let v = u[k] ?? 0; const out = [`初期値 ${v}`];
+  const stage = (label, p, f) => { if (!p && !f) return; v = fl(v * (1 + p / 100)) + f; out.push(`${label} ${p ? "+" + p + "%" : ""}${p && f ? " " : ""}${f ? "+" + f : ""} → ${v}`); };
+  stage("編成特技", s.p.formation.total, s.f.formation.total);
+  stage("所持特技", s.p.held.total, s.f.held.total);
+  if (gm !== 1) { v = fl(v * gm); out.push(`巨大化補正 ×${Math.round(gm * 100) / 100}（${u.giants ?? 5}回） → ${v}`); }
+  stage("特技・計略", s.p.normal.total, s.f.normal.total);
+  const r = x.refs.filter(e => e.type === k + "_flat");
+  if (r.length) { const add = r.reduce((a, e) => a + e.value, 0); v += add; out.push(`変換・鼓舞 +${add}（${r.map(e => esc(e.from.name) + " " + e.value).join("、")}） → ${v}`); }
+  if (k === "atk" && x.mult.total) { v = fl(v * (1 + x.mult.total / 100)); out.push(`攻撃倍率 +${x.mult.total}% → ${v}`); }
+  return out;
+}
+function statBlock(x, res) {
+  const raw = Math.max(x.atk - x.edef, 20);
+  const dmgSteps = [`敵の防御 ${settings.edef} → ${x.magic ? "0（防御無視）" : x.edef}${!x.magic && x.ignore ? `（防御無視${x.ignore}%込み）` : ""}`,
+    `(攻撃 ${x.atk} − ${x.magic ? 0 : x.edef}) = ${raw}${raw === 20 ? "（最低20）" : ""}`,
+    `× 与ダメージ +${x.dmgUp}% × 敵の被ダメージ +${res.taken}%${x.dmgUp2 ? ` × 与えるダメージ +${x.dmgUp2}%` : ""} = ${x.dmg}`];
+  const li = a => a.map(s => `<li>${s}</li>`).join("");
+  return `<div class="stats"><span>攻 <b>${x.atk}</b></span><span>防 <b>${x.def}</b></span><span>耐 <b>${x.hp}</b></span><span>射 <b>${x.rng}</b></span><span>1撃 <b>${x.dmg}</b></span>
+    <details class="more"><summary>実数値の内訳 ▾</summary><span class="list">
+      <b>攻撃</b><ol class="steps">${li(statSteps(x, "atk"))}</ol><b>1撃の目安</b><ol class="steps">${li(dmgSteps)}</ol>
+      <b>防御</b><ol class="steps">${li(statSteps(x, "def"))}</ol><b>耐久</b><ol class="steps">${li(statSteps(x, "hp"))}</ol>
+      <b>射程</b><ol class="steps">${li(statSteps(x, "rng"))}</ol></span></details></div>`;
+}
 function renderBuffs(res) {
-  if (!res.rows.length) { $("buffs").innerHTML = "<p class='muted'>城娘を追加すると表示されます</p>"; $("debuffs").innerHTML = ""; return; }
-  $("buffs").innerHTML = res.rows.map(x => `<div class="bcard"><h3>${attrTags(x.u)}${esc(x.u.name)} <span class="muted" style="font-weight:normal;font-size:11.5px">${esc(x.u.weapon)}・${esc(x.u.range)}${party.find(p => p.id === x.u.id)?.strat ? "・計略オン" : ""}</span></h3>
-    ${itemLines(buffItems(x), CATS, "数値で読み取れたバフはありません")}</div>`).join("");
-  $("debuffs").innerHTML = `<div class="bcard">${itemLines(enemyItems(res), ["防御", "攻撃", "被ダメージ", "与ダメージ", "移動速度", "射程"], "数値で読み取れたデバフはありません")}
-    <div class="src" style="margin-top:4px">割合デバフは同系統で一番高いものだけ有効（編成と所持は競合、特技計略とは乗算）。固定値は割合の後に引きます。</div></div>`;
+  if (!res.rows.length) { $("buffs").innerHTML = "<p class='muted'>城娘を編成すると表示されます</p>"; $("debuffs").innerHTML = ""; return; }
+  $("buffs").innerHTML = res.rows.map(x => {
+    const p = party.find(p => p.id === x.u.id);
+    return `<div class="bcard"><h3>${unitIcons(x.u, "sm")}<span style="font-weight:800">${esc(x.u.name)}</span>
+      ${hasStrat(x.u) ? `<button class="tog ${p?.strat ? "on" : "off"}" data-tog-strat="${party.indexOf(p)}" style="margin-left:auto;min-width:0">計略 ${p?.strat ? "ON" : "OFF"}</button>` : ""}</h3>
+      ${statBlock(x, res)}
+      ${itemLines(buffItems(x), CATS, "数値で読み取れたバフはありません")}</div>`;
+  }).join("");
+  $("debuffs").innerHTML = `<div class="bcard">${itemLines(enemyItems(res), ECATS, "数値で読み取れたデバフはありません")}
+    <div class="src" style="margin-top:4px">敵: 防御 ${settings.edef} → ${res.edefBase} ／ 攻撃 ${settings.eatk} → ${res.eatk} ／ 被ダメージ +${res.taken}% ／ 与ダメージ −${res.dealt}% ／ 移動速度 −${res.slow}%</div>
+    <div class="src">割合デバフは同系統で一番高いものだけ有効（編成と所持は競合、特技計略とは乗算）。固定値は割合の後に引きます。</div></div>`;
 }
 
-// ---- 計略のオン/オフ: オンにすると加わるバフ（緑）と、上書きされて無効になるバフ（取り消し線） ----
+// ---- 計略で加わる効果（オンにしたときに新しく有効になるものだけ。上書きされて消えるものは出さない） ----
 function renderStrat(res) {
-  $("strat-sum").innerHTML = "";
-  if (!res.rows.length) { $("strat-diff").innerHTML = "<p class='muted'>城娘を追加すると表示されます</p>"; return; }
+  if (!res.rows.length) { $("strat-diff").innerHTML = "<p class='muted'>城娘を編成すると表示されます</p>"; return; }
   const key = i => i.cat + "|" + i.html;
   const diff = (a, b, cats) => cats.map(c => {
-    const A = a.filter(i => i.cat === c), B = b.filter(i => i.cat === c);
-    const ka = new Set(A.map(key)), kb = new Set(B.map(key));
-    const add = B.filter(i => !ka.has(key(i))).map(i => i.html), gone = A.filter(i => !kb.has(key(i))).map(i => `<span class="over">${i.html.replace(/<[^>]+>/g, "")}</span>`);
-    return add.length || gone.length ? `${c} ${[...add, ...gone].join("、")}` : "";
-  }).filter(Boolean);
-  $("strat-diff").innerHTML = res.members.map(m => {
+    const ka = new Set(a.filter(i => i.cat === c).map(key));
+    const add = b.filter(i => i.cat === c && !ka.has(key(i))).map(i => i.html);
+    return add.length ? `<div class="bline"><span class="k">${c}</span>${add.join("<br>")}</div>` : "";
+  }).join("");
+  const html = res.members.map(m => {
     const u = m.u;
-    if (!u.strategy?.text || u.strategy.text === "なし") return "";
+    if (!hasStrat(u)) return "";
     const alt = compute(party.map(p => p.id === u.id ? { ...p, strat: !p.strat } : p));
     const off = m.strat ? alt : res, on = m.strat ? res : alt;
-    const lines = off.rows.map((x, i) => { const d = diff(buffItems(x), buffItems(on.rows[i]), CATS); return d.length ? `<div class="bline"><span class="k">${esc(x.u.name)}</span>${d.join("<br>")}</div>` : ""; }).join("");
-    const el = diff(enemyItems(off), enemyItems(on), ["防御", "攻撃", "被ダメージ", "与ダメージ", "移動速度", "射程"]);
-    const body = lines + (el.length ? `<div class="bline"><span class="k">敵</span>${el.join("<br>")}</div>` : "");
-    return `<div class="gap-item ${body ? "have" : "info"}"><h3>${esc(u.name)}の計略 <span class="muted" style="font-weight:normal">（今: ${m.strat ? "オン" : "オフ"}）</span>
-      <label style="font-weight:normal;font-size:12px;margin-left:6px"><input type="checkbox" data-strat2="${esc(u.id)}" ${m.strat ? "checked" : ""}> 発動中</label></h3>
+    const lines = off.rows.map((x, i) => { const d = diff(buffItems(x), buffItems(on.rows[i]), CATS); return d ? `<div style="margin-top:4px"><b>→ ${esc(x.u.name)}</b>${d}</div>` : ""; }).join("");
+    const el = diff(enemyItems(off), enemyItems(on), ECATS);
+    const body = lines + (el ? `<div style="margin-top:4px"><b>→ 敵</b>${el}</div>` : "");
+    const i = party.findIndex(p => p.id === u.id);
+    return `<div class="gap-item ${body ? "have" : "info"}"><h3 style="display:flex;align-items:center;gap:6px">${unitIcons(u, "sm")}${esc(u.name)}の計略
+      <button class="tog ${m.strat ? "on" : "off"}" data-tog-strat="${i}" style="margin-left:auto;min-width:0">計略 ${m.strat ? "ON" : "OFF"}</button></h3>
       <div class="src">${esc(u.strategy.text.split("\n")[0])}</div>
-      ${body ? `<div style="font-size:12px;margin-top:2px">オンにすると（緑が加わる効果、取り消し線はより高い効果に上書きされて無効になるもの）:</div>${body}` : `<div class="muted" style="font-size:12px">数値で読み取れる効果はありません（足止め数・攻撃対象数などは対象外）。</div>`}</div>`;
+      ${body ? `<div style="font-size:12.5px">${body}</div>` : `<div class="muted" style="font-size:12px">数値で読み取れる効果はありません（足止め数・攻撃対象数などは対象外）。</div>`}</div>`;
   }).join("");
+  $("strat-diff").innerHTML = html || "<p class='muted'>計略を持つ城娘がいません</p>";
 }
 
 function coverage(res, types) {
@@ -715,33 +851,46 @@ function coverage(res, types) {
   const got = res.rows.filter(x => types.some(t => x.mine.some(e => e.type === t))).length;
   return got === 0 ? "missing" : got < res.rows.length ? "partial" : "ok";
 }
+const candRow = (u, tagHtml, label) => `<div class="cand">${unitIcons(u, "sm")}${attrTags(u)}<b>${esc(u.name)}</b>
+  <span class="muted">★${u.rarity}｜${label}</span>${tagHtml}
+  <button class="small" data-add="${esc(u.id)}" ${party.length >= 8 ? "disabled" : ""} style="margin-left:auto">追加</button></div>`;
+function candFilter() { const ga = $("g-attr").value, gr = Number($("g-rar").value), inParty = new Set(party.map(p => p.id));
+  return u => !inParty.has(u.id) && (!ga || (u.attr || []).includes(ga)) && u.rarity >= gr; }
 function renderGaps(res) {
-  if (!res.members.length) { $("gaps").innerHTML = "<p class='muted'>城娘を追加すると表示されます</p>"; return; }
-  const ga = $("g-attr").value, gr = Number($("g-rar").value);
-  const inParty = new Set(party.map(p => p.id));
+  if (!res.members.length) { $("gaps").innerHTML = "<p class='muted'>城娘を編成すると表示されます</p>"; return; }
+  const ok = candFilter(), filtered = $("g-attr").value || Number($("g-rar").value);
   const allMagic = res.rows.every(x => x.magic);
-  $("gaps").innerHTML = GAP_CHECKS.map(c => {
+  const items = GAP_CHECKS.map(c => {
     let st = coverage(res, c.types);
     if (c.types[0] === "enemy_def" && allMagic) st = "ok";
     const label = c.types.map(t => EFFECTS[t].label).join(" / ");
     const head = { ok: "足りています", partial: "一部の城娘にしか届いていません", missing: "不足" }[st];
     let body = "";
     if (st !== "ok") {
-      const cands = units.filter(u => !inParty.has(u.id) && (!ga || (u.attr || []).includes(ga)) && u.rarity >= gr)
-        .map(u => {
+      const cands = units.filter(ok).map(u => {
           const es = allEffects(u).filter(e => c.types.includes(e.type) && !["self", "target"].includes(e.target) && !String(e.target).startsWith("other:"));
           if (!es.length) return null;
           const best = es.reduce((a, b) => (b.value > a.value ? b : a));
           return { u, e: best, wide: ["all", "enemy", "inrange"].includes(best.target) };
         }).filter(Boolean)
         .sort((a, b) => (b.wide - a.wide) || (b.e.value - a.e.value) || (b.u.rarity - a.u.rarity)).slice(0, 6);
-      body = cands.length ? cands.map(({ u, e }) => `<div class="cand">${attrTags(u)}<b>${esc(u.name)}</b>
-          <span class="muted">★${u.rarity}・${esc(u.weapon)}・${esc(u.range)}｜${e.sourceLabel}</span>${effTag(e)}
-          <button class="small" data-add="${esc(u.id)}" ${party.length >= 8 ? "disabled" : ""}>追加</button></div>`).join("")
-        : `<div class="muted">候補が見つかりません${ga || gr ? "（絞り込みを外すと見つかるかもしれません）" : ""}</div>`;
+      body = cands.length ? cands.map(({ u, e }) => candRow(u, effTag(e), e.sourceLabel)).join("")
+        : `<div class="muted">候補が見つかりません${filtered ? "（絞り込みを外すと見つかるかもしれません）" : ""}</div>`;
     }
-    return `<div class="gap-item ${st}"><h3>${label}：${head}</h3><div class="muted" style="font-size:12px">${c.why}</div>${body}</div>`;
-  }).join("") + `<h3 style="font-size:14px;margin:14px 0 6px">特殊効果（必要に応じて）</h3><div class="sp-grid">` + SP_CHECKS.map(c => {
+    return { st, html: `<div class="gap-item ${st}"><h3>${label}：${head}</h3><div class="muted" style="font-size:12px">${c.why}</div>${body}</div>` };
+  });
+  // 不足しているものを上に
+  const order = { missing: 0, partial: 1, ok: 2 };
+  $("gaps").innerHTML = items.sort((a, b) => order[a.st] - order[b.st]).map(x => x.html).join("");
+}
+function renderSp(res) {
+  if (!res.members.length) { $("sp-party").innerHTML = "<p class='muted'>城娘を編成すると表示されます</p>"; $("sp-checks").innerHTML = ""; return; }
+  $("sp-party").innerHTML = `<div class="bcard">` + res.members.map(({ u }) => {
+    const ts = [...new Map(allTags(u).map(t => [t.tag + t.source, t])).values()];
+    return `<div class="bline" style="display:flex;gap:6px;align-items:flex-start">${unitIcons(u, "sm")}<div><b>${esc(u.name)}</b><br>${ts.length ? ts.map(t => `${spTag(t)}<span class="src">${t.sourceLabel}</span>`).join(" ") : '<span class="muted">なし</span>'}</div></div>`;
+  }).join("") + `</div>`;
+  const ok = candFilter();
+  $("sp-checks").innerHTML = SP_CHECKS.map(c => {
     const have = res.members.flatMap(({ u }) => allTags(u).filter(t => c.tags.includes(t.tag)));
     const label = c.tags.join(" / ");
     if (have.length) {
@@ -749,35 +898,67 @@ function renderGaps(res) {
         .map(t => `${esc(t.from.name)}（${t.sourceLabel}${t.tag !== c.tags[0] || c.tags.length > 1 ? "・" + esc(t.tag) : ""}${t.value ? " " + t.value : ""}）`).join("、");
       return `<div class="gap-item have"><h3>${label}：あり</h3><div style="font-size:12px">${who}</div></div>`;
     }
-    const cands = units.filter(u => !inParty.has(u.id) && (!ga || (u.attr || []).includes(ga)) && u.rarity >= gr)
+    const cands = units.filter(ok)
       .map(u => ({ u, t: allTags(u).filter(t => c.tags.includes(t.tag)).sort((a, b) => (b.value || 0) - (a.value || 0))[0] })).filter(x => x.t)
       .sort((a, b) => (b.u.rarity - a.u.rarity) || ((b.t.value || 0) - (a.t.value || 0))).slice(0, 5);
     return `<div class="gap-item info"><h3>${label}：なし</h3><div class="muted" style="font-size:12px">${c.why}</div>
-      <details><summary style="font-size:12px">候補を見る（${cands.length}体）</summary>${cands.map(({ u, t }) => `<div class="cand">${attrTags(u)}<b>${esc(u.name)}</b>
-        <span class="muted">★${u.rarity}・${esc(u.weapon)}｜${t.sourceLabel}</span>${spTag(t)}
-        <button class="small" data-add="${esc(u.id)}" ${party.length >= 8 ? "disabled" : ""}>追加</button></div>`).join("")}</details></div>`;
-  }).join("") + "</div>";
+      <details><summary style="font-size:12px">候補を見る（${cands.length}体）</summary>${cands.map(({ u, t }) => candRow(u, spTag(t), t.sourceLabel)).join("")}</details></div>`;
+  }).join("");
 }
 
 function renderAll() {
   const res = compute();
-  renderList(); renderSlots(); renderOverview(res); renderBuffs(res); renderStrat(res); renderCalc(res); renderGaps(res);
+  renderSlots(res); renderList(); renderOverview(res); renderBuffs(res); renderStrat(res); renderGaps(res); renderSp(res);
   save();
 }
 
+// ---- タブとスワイプ（横スクロールのスナップで切り替え） ----
+const LS_TAB = "shiroRe.v2.tab";
+const pages = [...document.querySelectorAll("#pager > .page")];
+$("tabs").innerHTML = pages.map((p, i) => `<button data-tab="${i}">${p.dataset.title}</button>`).join("");
+let curTab = 0;
+function setTabUI(i) {
+  curTab = i;
+  document.querySelectorAll("#tabs button").forEach((b, j) => b.classList.toggle("on", j === i));
+  try { localStorage.setItem(LS_TAB, String(i)); } catch {}
+}
+function goTab(i, smooth = true) {
+  const pg = $("pager");
+  pg.scrollTo({ left: i * pg.clientWidth, behavior: smooth ? "smooth" : "auto" });
+  setTabUI(i);
+}
+let scrollT = null;
+$("pager").addEventListener("scroll", () => {
+  const pg = $("pager"), i = Math.round(pg.scrollLeft / Math.max(1, pg.clientWidth));
+  if (i !== curTab) setTabUI(i);
+}, { passive: true });
+window.addEventListener("resize", () => { const pg = $("pager"); pg.scrollLeft = curTab * pg.clientWidth; });
+
 // ---- イベント ----
-["f-name", "f-attr", "f-weapon", "f-range", "f-rarity", "f-effect", "f-tag", "f-target", "f-sort"].forEach(id => $(id).addEventListener("input", renderList));
-["g-attr", "g-rar"].forEach(id => $(id).addEventListener("input", () => renderGaps(compute())));
+["f-name", "f-rarity", "f-effect", "f-tag", "f-target", "f-sort"].forEach(id => $(id).addEventListener("input", renderList));
+$("f-range").addEventListener("input", () => { renderChips(); renderList(); });
+["g-attr", "g-rar"].forEach(id => $(id).addEventListener("input", () => { const r = compute(); renderGaps(r); renderSp(r); }));
+$("pick-close").onclick = closePick;
+$("f-clear").onclick = () => { ["f-attr", "f-weapon", "f-range", "f-rarity", "f-effect", "f-tag", "f-target"].forEach(id => $(id).value = ""); $("f-sort").value = "no"; renderChips(); renderList(); };
 document.addEventListener("click", ev => {
-  const add = ev.target.closest("[data-add]"), rm = ev.target.closest("[data-rm]");
-  if (add && party.length < 8 && !party.some(p => p.id === add.dataset.add)) { party.push({ id: add.dataset.add, strat: true, sp: true }); renderAll(); }
+  const t = ev.target;
+  const add = t.closest("[data-add]"), rm = t.closest("[data-rm]"), op = t.closest("[data-open-pick]"), tab = t.closest("[data-tab]");
+  const ts = t.closest("[data-tog-strat]"), tsp = t.closest("[data-tog-sp]"), go = t.closest("[data-goto]");
+  const cw = t.closest("[data-chip-w]"), ca = t.closest("[data-chip-a]"), cr = t.closest("[data-chip-r]");
+  if (tab) goTab(+tab.dataset.tab);
+  if (op) openPick();
+  if (cw) { $("f-weapon").value = cw.dataset.chipW; renderChips(); renderList(); }
+  if (ca) { $("f-attr").value = ca.dataset.chipA; renderChips(); renderList(); }
+  if (cr) { $("f-range").value = $("f-range").value === cr.dataset.chipR ? "" : cr.dataset.chipR; renderChips(); renderList(); }
+  if (add && party.length < 8 && !party.some(p => p.id === add.dataset.add)) {
+    party.push({ id: add.dataset.add, strat: true, sp: true });
+    if (add.closest("#pick")) closePick();
+    renderAll();
+  }
   if (rm) { party.splice(+rm.dataset.rm, 1); renderAll(); }
-});
-document.addEventListener("change", ev => {
-  const s = ev.target.closest("[data-strat]"), sp = ev.target.closest("[data-sp]"), s2 = ev.target.closest("[data-strat2]");
-  if (s2) { const p = party.find(p => p.id === s2.dataset.strat2); if (p) { p.strat = s2.checked; renderAll(); } }
-  if (s) { party[+s.dataset.strat].strat = s.checked; renderAll(); }
-  if (sp) { party[+sp.dataset.sp].sp = sp.checked; renderAll(); }
+  if (ts && party[+ts.dataset.togStrat]) { const p = party[+ts.dataset.togStrat]; p.strat = !p.strat; renderAll(); }
+  if (tsp && party[+tsp.dataset.togSp]) { const p = party[+tsp.dataset.togSp]; p.sp = !p.sp; renderAll(); }
+  if (go) { goTab(1); setTimeout(() => { const el = $("ov-" + go.dataset.goto); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); }
 });
 function bindSetting(id, key, num) {
   const el = $(id);
@@ -785,6 +966,7 @@ function bindSetting(id, key, num) {
   el.addEventListener("input", () => { settings[key] = num ? Number(el.value) || 0 : el.checked; renderAll(); });
 }
 bindSetting("s-edef", "edef", true); bindSetting("s-eatk", "eatk", true); bindSetting("s-giant", "giant", true); bindSetting("s-cond", "cond"); bindSetting("s-target", "target");
+(() => { let t = 0; try { t = Number(localStorage.getItem(LS_TAB)) || 0; } catch {} t = Math.min(Math.max(0, t), pages.length - 1); requestAnimationFrame(() => goTab(t, false)); })();
 
 const dlg = $("dlg");
 $("fmt").textContent = $("fmt").textContent.replace("EFFECT_LIST", Object.entries(EFFECTS).map(([k, v]) => `${k}(${v.label})`).join(", "));
@@ -905,7 +1087,7 @@ function refreshShotButton() {
   $("shot").onchange = async ev => {
     const file = ev.target.files[0]; ev.target.value = "";
     if (!file) return;
-    if (!sampleFn && !localStorage.getItem(LS_KEY)) { $("import-msg").textContent = "スクショの読み取りには、下の「計算ルールと設定」でAPIキーを入れてください。名前の入力でも読み込めます。"; return; }
+    if (!sampleFn && !localStorage.getItem(LS_KEY)) { $("import-msg").textContent = "スクショの読み取りには、「設定」タブでAPIキーを入れてください。名前の入力でも読み込めます。"; return; }
     $("import-msg").textContent = "スクショを読み取っています…";
     try {
       const text = sampleFn ? (await sampleFn(SHOT_PROMPT, { images: [file], modelTier: "default" })).text : await namesViaApi(file);
