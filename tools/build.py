@@ -125,7 +125,7 @@ SUBJ = [
   (re.compile(r"(?:伏兵の|対象の)?(?:射程|範囲)内の?(?:全ての)?(?:城娘|味方)(?:と伏兵)?(?:全て)?の"), "inrange"),
   (re.compile(r"(?:全|全ての)(?:城娘|味方)の"), "all"),
   (re.compile(r"(?:部隊の|全ての|全)([^の。\s]{1,20}?)(?:城娘|城)の"), "group"),
-  (re.compile(r"対象の"), "target"),
+  (re.compile(r"対象の|対象が"), "target"),
   (re.compile(r"([^の、。\s]{1,14}?)城娘の"), "group"),
 ]
 
@@ -196,6 +196,65 @@ def classify(enemy, stat, val, unit, verb):
 
 def num(v): return int(v) if float(v).is_integer() else v
 
+# ---- 攻撃値に掛かる倍率（wiki「検証」ダメージ計算式の「攻撃側の攻撃値」）----
+# 「飛行敵に対して攻撃が2.5倍」「攻撃が妖怪と飛行敵に1.6倍」: 敵の種類への特攻
+VS_RX = re.compile(r"(?:攻撃が)?(飛行敵?|妖怪)(?:と(飛行敵?|妖怪))?(?:に対して|に対し|に対する|には|への|に)(?:の)?(?:攻撃|与えるダメージ|ダメージ|術攻撃)?(?:が|は)?(\d+(?:\.\d+)?)倍(?:の(?:術)?ダメージ)?")
+# 「攻撃が飛行敵に半減されず」「妖怪に攻撃を半減されない」
+NOHALF_RX = re.compile(r"(飛行敵?|妖怪)(?:と(飛行敵?|妖怪))?(?:に対して|に)(?:攻撃(?:を|が))?半減(?:され(?:ない|ず)|しな)")
+# 計略で攻撃そのものが「攻撃の5倍のダメージを与える攻撃」「標的に2倍、周囲に1.5倍」に変わるもの
+ATKM_RX = re.compile(r"(攻撃が)?(?:敵1体とその周囲に|標的(?:とその周囲の敵)?に|射程内の全ての敵に)?(?:攻撃の)?(\d+(?:\.\d+)?)倍(?:の?(?:術|防御無視)?ダメージ|、)")
+ATKM_OK = re.compile(r"攻撃(?:に|と)な|攻撃を行|単発|術ダメージを与え|ダメージになる")
+DIRECT_RX = re.compile(r"直撃ボーナスが(\d+)%")
+def kind_of(w): return "fly" if w.startswith("飛行") else "yokai"
+
+def multipliers_of(seg, target, cond, stack):
+    """区切り1つから攻撃値倍率・特攻・直撃ボーナスを取り出し、読んだ部分を消した区切りを返す"""
+    effs = []
+    def add(t, v, **kw):
+        e = dict(type=t, value=num(round(v, 1)), target=target, **kw)
+        if cond: e["cond"] = True
+        if stack: e["stack"] = True
+        effs.append(e)
+    def after_buhei(pos): return bool(re.search(r"伏兵の(?:攻撃)?(?:は|が)?$", seg[max(0, pos - 8):pos]))
+    for m in list(NOHALF_RX.finditer(seg)):
+        if after_buhei(m.start()): continue
+        for w in filter(None, (m.group(1), m.group(2))): add("no_half_" + kind_of(w), 0)
+    seg = NOHALF_RX.sub("、", seg)
+    for m in list(VS_RX.finditer(seg)):
+        if after_buhei(m.start()): continue
+        v = float(m.group(3))
+        # 「標的に1.5倍、妖怪には2.5倍」: 妖怪へは通常の倍率に対して 2.5/1.5
+        prev = re.search(r"(\d+(?:\.\d+)?)倍、$", seg[:m.start()]) if "には" in m.group(0) else None
+        if prev:
+            # 攻撃そのものが変わる計略だけ（「全敵に攻撃の2.5倍、妖怪には7倍」のような単発ダメージは通常攻撃ではない）
+            if "攻撃が" not in seg[max(0, prev.start() - 20):prev.start()]: continue
+            if float(prev.group(1)) > 0: v = v / float(prev.group(1))
+        both = bool(m.group(2))
+        for w in filter(None, (m.group(1), m.group(2))): add("vs_" + kind_of(w), (v - 1) * 100, **({"both": True} if both else {}))
+    seg = VS_RX.sub("、", seg)
+    # 「術ダメージを与える」「術攻撃を行う」: 術攻撃は防御無視で、妖怪・飛行に半減されない（伏兵の術攻撃は除く）
+    if re.search(r"術ダメージを与え|術攻撃(?:に|と)な|術攻撃を行", seg) and "伏兵" not in seg:
+        add("def_ignore", 100); add("no_half_fly", 0); add("no_half_yokai", 0)
+    for m in DIRECT_RX.finditer(seg): add("direct", float(m.group(1)))
+    seg = DIRECT_RX.sub("、", seg)
+    out = seg
+    for m in ATKM_RX.finditer(seg):
+        txt = m.group(0)
+        if not ("攻撃の" in txt or "標的" in txt or "周囲" in txt or "ダメージ" in txt): continue
+        if "伏兵" in seg[max(0, m.start() - 20):m.end() + 30]: continue
+        if not (m.group(1) or ATKM_OK.search(seg[m.end():m.end() + 40])): continue
+        add("atk_mult", (float(m.group(2)) - 1) * 100)
+        out = out.replace(txt, "、", 1)
+        break  # 「標的に2倍、周囲に1.5倍」は標的への倍率だけを使う
+    return effs, out
+
+# 「与えるダメージ」がどの攻撃に掛かるか: 特殊攻撃だけ／計略中だけ
+def dmg_scope(before):
+    tail = before[-14:]
+    if "特殊攻撃" in tail: return "special"
+    if "計略" in tail: return "strategy"
+    return None
+
 TAIL_PAIRS = re.compile(r"(?:と\d+(?:\.\d+)?)?[、,/ ]*(?:" + STAT + r"(?:(?:と|や|、)" + STAT + r")*(?:が|を|は)?\d+(?:\.\d+)?(?:%|倍)?(?:と\d+)?[、,/ ]*)*")
 GIANT_UPTO = re.compile(r"(?:(" + STAT + r")が?)?巨大化(?:段階)?に応じて(?:更に|さらに)?(?:(" + STAT + r")が?)?上昇[（(]最大(\d+(?:\.\d+)?)(%|倍)?")
 def effects_of(text, giants=5):
@@ -215,6 +274,9 @@ def effects_of(text, giants=5):
         cond = bool(re.search(r"度に|毎に|ずつ|時間経過|撃破時|被攻撃時|計略中|発動中", seg))
         cap = re.search(r"(?:上限|最大)(\d+)%", seg)
         stack = bool(re.search(r"重複(?!なし|しない)", seg))
+        if target != "enemy":
+            meffs, seg = multipliers_of(seg, target, cond, stack)
+            effs.extend(meffs)
         di = re.search(r"防御を(\d+)%無視", seg)
         if di:
             e = dict(type="def_ignore", value=int(di.group(1)) * (giants if giant else 1), target="self")
@@ -250,6 +312,10 @@ def effects_of(text, giants=5):
                     t, vv = classify(tg == "enemy", stat, vl, un, verb)
                     if not t: continue
                     e = dict(type=t, value=num(vv), target=tg)
+                    if t == "dmg_up2":
+                        sc = dmg_scope(seg[:p.start()])
+                        if sc: e["scope"] = sc
+                        if sc == "strategy": e["target"] = "self"  # 「計略で与えるダメージ」は自身の計略
                     if stack: e["stack"] = True
                     if cond: e["cond"] = True
                     if giant: e["giant"] = giants
@@ -491,7 +557,11 @@ EFF_LABEL = {"atk_pct": ("攻撃", "%", "+"), "atk_flat": ("攻撃", "", "+"), "
     "speed": ("攻撃速度", "%", "+"), "gap": ("隙短縮", "%", ""), "dmg_cut": ("被ダメ軽減", "%", ""), "def_ignore": ("防御無視", "%", ""),
     "kobu_mult": ("鼓舞効果", "%", "+"), "enemy_taken": ("被ダメ上昇", "%", ""), "enemy_def": ("防御低下", "%", ""), "enemy_def_flat": ("防御低下", "", ""),
     "enemy_atk": ("攻撃低下", "%", ""), "enemy_atk_flat": ("攻撃低下", "", ""), "enemy_dealt": ("与ダメ低下", "%", ""),
-    "enemy_slow": ("移動速度低下", "%", ""), "enemy_rng": ("射程低下", "%", "")}
+    "enemy_slow": ("移動速度低下", "%", ""), "enemy_rng": ("射程低下", "%", ""),
+    "atk_mult": ("攻撃倍率", "", ""), "vs_fly": ("飛行特攻", "", ""), "vs_yokai": ("妖怪特攻", "", ""), "direct": ("直撃ボーナス", "%", ""),
+    "no_half_fly": ("飛行に半減されない", "", ""), "no_half_yokai": ("妖怪に半減されない", "", "")}
+MULT_TYPES = {"atk_mult", "dmg_up2", "vs_fly", "vs_yokai"}
+SCOPE_JA = {"special": "（特殊攻撃のみ）", "strategy": "（計略中）"}
 STAT_JA = {"atk": "攻撃", "def": "防御", "hp": "耐久", "rng": "射程", "heal": "回復"}
 TARGET_JA = {"self": "自身", "all": "全体", "inrange": "射程内", "near": "近接", "far": "遠隔", "target": "対象", "enemy": "敵"}
 
@@ -516,6 +586,8 @@ def summarize(block):
             body = f"{name}{'+' if sign else ''}（{who}の{STAT_JA[r['stat']]}の{r['pct']}%）"
             if e.get("kobu"): body = "鼓舞 " + body
         elif e["type"] == "def_ignore" and e["value"] >= 100: body = "防御無視"
+        elif e["type"].startswith("no_half_"): body = name
+        elif e["type"] in MULT_TYPES: body = f"{name}×{num(round(1 + e['value'] / 100, 2))}" + SCOPE_JA.get(e.get("scope"), "")
         else: body = f"{name}{sign}{e['value']}{unit}" if sign else f"{name} {e['value']}{unit}"
         parts.append(f"{target_ja(e.get('target') or 'self')} {body}" + ("（重複）" if e.get("stack") else "") + (f"（巨大化{e['giant']}回）" if e.get("giant") else "") + ("（条件付き）" if e.get("cond") else ""))
     tags = [t["tag"] + (str(t["value"]) if t.get("value") else "") for t in block.get("tags") or []]
@@ -840,6 +912,7 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
     <div class="settings">
       <label>敵の防御 <input type="number" id="s-edef" min="0"></label>
       <label>敵の攻撃 <input type="number" id="s-eatk" min="0"></label>
+      <label>敵の種類 <select id="s-ekind" style="width:auto"><option value="none">通常</option><option value="fly">飛行</option><option value="yokai">妖怪</option><option value="both">飛行の妖怪（天狗など）</option></select></label>
       <label>巨大化回数（鎌の防御無視に使用） <input type="number" id="s-giant" min="0" max="5"></label>
       <label><input type="checkbox" id="s-cond"> 条件付き効果（〜する度に、撃破時など）も上限値で含める</label>
       <label><input type="checkbox" id="s-target"> 計略の「対象の〜」を発動者自身に掛けたものとして扱う</label>
@@ -869,8 +942,10 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
     <ul class="rules">
       <li>同じ種類の割合バフ/デバフは、一番高いものだけ有効（説明文に「重複」とあるものは加算）。固定値は全て加算。</li>
       <li>編成特技・所持特技・特技/計略は別系統なので、割合バフは系統ごとに掛け算で重なる。</li>
-      <li>攻撃 = ((初期攻撃×(1+編成%)＋編成固定)×(1+所持%)) ×(1+特技計略%)＋固定値、その後に計略などの攻撃倍率。乗算ごとに端数切り捨て。</li>
-      <li>ダメージ = (攻撃 − 敵防御) ×(1+与ダメ増)×(1+敵の被ダメ増)×(1+与えるダメージ増)。最低20。法術・鈴・杖・祓串は防御無視。</li>
+      <li>攻撃（ステータス） = (((初期攻撃×(1+編成%)＋編成固定)×(1+所持%)＋所持固定)×巨大化補正) ×(1+特技計略%)＋固定値＋変換・鼓舞。乗算ごとに端数切り捨て。</li>
+      <li>攻撃値 = 攻撃（ステータス） × 攻撃値倍率。攻撃値倍率は計略の「攻撃のN倍のダメージ」、「与えるダメージがN倍」、特攻（弓の対飛行1.5倍、「飛行敵に対して攻撃が2倍」など）、直撃ボーナス（大砲・軍船は+50%）、飛行敵への近接攻撃半減・妖怪への物理攻撃半減で、全て掛け算で重なる（特技と計略の「与えるダメージ」同士も掛け算）。特攻は同じ種類の中では一番高いものだけ。敵の種類は上の設定で選ぶ。</li>
+      <li>ダメージ = (攻撃値 − 敵防御)（最低20） ×(1+与ダメ増)×(1+敵の被ダメ増)。「与ダメージ+N%」は特技・計略の中では一番高いものだけ。法術・鈴・杖・祓串は防御無視で、妖怪に半減されない。</li>
+      <li>「特殊攻撃で与えるダメージ」は通常攻撃の1撃には含めず、「計略で/計略中に与えるダメージ」はその城娘の計略をオンにしたときだけ含める。</li>
       <li>敵防御 = (防御×(1−特技計略の防御低下%) − 固定値低下) ×(1−防御無視%)。防御無視は特技計略の最大値＋鎌の武器種特性を加算。</li>
       <li>変換バフ（「攻撃に防御の50%の値を加算」）と鼓舞バフ（「自身の攻撃の35%の値を射程内の城娘に加算」）は、割合・固定値の後に加算。加算元は他のバフ適用後の値。鼓舞は提供者自身には掛からないものとして計算。</li>
       <li>攻撃速度・隙短縮は系統ごとに乗算。射程の位置関係は考慮せず、「射程内」の効果は全員に届くものとして扱う。</li>
@@ -959,6 +1034,11 @@ const EFFECTS = {
   atk_pct:     { label: "攻撃上昇",           unit: "%" },
   atk_flat:    { label: "攻撃上昇(固定)",     unit: "" },
   atk_mult:    { label: "攻撃倍率",           unit: "%" },
+  vs_fly:      { label: "飛行特攻",           unit: "%" },
+  vs_yokai:    { label: "妖怪特攻",           unit: "%" },
+  no_half_fly: { label: "飛行に半減されない", unit: "", flag: true },
+  no_half_yokai: { label: "妖怪に半減されない", unit: "", flag: true },
+  direct:      { label: "直撃ボーナス",       unit: "%" },
   def_pct:     { label: "防御上昇",           unit: "%" },
   def_flat:    { label: "防御上昇(固定)",     unit: "" },
   hp_pct:      { label: "耐久上昇",           unit: "%" },
@@ -968,7 +1048,7 @@ const EFFECTS = {
   heal_pct:    { label: "回復上昇",           unit: "%" },
   heal_flat:   { label: "回復上昇(固定)",     unit: "" },
   dmg_up:      { label: "与ダメージ上昇",     unit: "%" },
-  dmg_up2:     { label: "与えるダメージ上昇", unit: "%" },
+  dmg_up2:     { label: "与えるダメージ上昇", unit: "%" },  // 攻撃値倍率の一種。互いに掛け算
   speed:       { label: "攻撃速度上昇",       unit: "%" },
   gap:         { label: "攻撃後の隙短縮",     unit: "%" },
   dmg_cut:     { label: "被ダメージ軽減",     unit: "%" },
@@ -1016,7 +1096,7 @@ const WIKI = "https://scre.swiki.jp/index.php?";
 const LS_UNITS = "shiroRe.v2.units", LS_PARTY = "shiroRe.v2.party", LS_SET = "shiroRe.v2.settings";
 let units = loadJSON(LS_UNITS) || WIKI_UNITS;
 let party = loadJSON(LS_PARTY) || [];
-let settings = Object.assign({ edef: 300, eatk: 1000, giant: 5, cond: true, target: true }, loadJSON(LS_SET) || {});
+let settings = Object.assign({ edef: 300, eatk: 1000, giant: 5, cond: true, target: true, ekind: "none" }, loadJSON(LS_SET) || {});
 let edited = !!loadJSON(LS_UNITS);
 
 function loadJSON(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
@@ -1033,7 +1113,7 @@ const byId = id => units.find(u => u.id === id);
 const attrColor = a => getComputedStyle(document.documentElement).getPropertyValue("--attr-" + a).trim() || "#999";
 const attrTags = u => (u.attr || []).map(a => `<span class="tag" style="background:${attrColor(a)}">${esc(a)}</span>`).join("");
 const STAT_JA = { atk: "攻撃", def: "防御", hp: "耐久", rng: "射程", heal: "回復" };
-const fmtVal = e => e.type === "def_ignore" && e.value >= 100 ? "" : " " + e.value + (EFFECTS[e.type]?.unit ?? "");
+const fmtVal = e => (e.type === "def_ignore" && e.value >= 100) || EFFECTS[e.type]?.flag ? "" : " " + e.value + (EFFECTS[e.type]?.unit ?? "");
 const refText = e => `${e.ref.frm === "recv" ? "各自" : "提供者"}の${STAT_JA[e.ref.stat]}の${e.ref.pct}%${e.kobu ? "（鼓舞）" : ""}`;
 const effText = e => e.ref ? `${(EFFECTS[e.type]?.label ?? e.type).replace("(固定)", "")} ${refText(e)}` : `${EFFECTS[e.type]?.label ?? e.type}${fmtVal(e)}${e.stack ? "（重複）" : ""}`;
 const targetText = t => ({ self:"自身", all:"全体", inrange:"射程内", near:"近接", far:"遠隔", target:"対象1体", enemy:"敵" }[t]
@@ -1156,21 +1236,50 @@ function compute(p = party) {
   const slow = Math.round((1 - enemyMult(enemy.enemy_slow, -1)) * 100);
   const erng = Math.round((1 - enemyMult(enemy.enemy_rng, -1)) * 100);
 
+  const stratOn = new Map(members.map(m => [m.u, !!m.strat]));
   const rows = base.map((b, i) => {
     const u = b.u, mine = b.mine.concat(refUsed[i]);
-    const mult = resolve(b.mine, "atk_mult");
-    const atk = fl(cur[i].atk * (1 + mult.total / 100));
+    const atk = cur[i].atk;
+    // 攻撃側の攻撃値（wiki「ダメージ計算式」）: ステータスの攻撃 × 攻撃値倍率 × 与えるダメージ × 特攻 × 直撃 × 飛行・妖怪の半減。全て掛け算
+    const okScope = e => e.scope !== "special" && (e.scope !== "strategy" || e.source === "strategy" || stratOn.get(e.from));
+    const mults = [];
+    for (const e of b.mine.filter(e => e.type === "atk_mult")) mults.push({ cat: "攻撃倍率", f: 1 + e.value / 100, e });
+    for (const e of b.mine.filter(e => e.type === "dmg_up2" && okScope(e))) mults.push({ cat: "与えるダメージ", f: 1 + e.value / 100, e });
+    const fly = settings.ekind === "fly" || settings.ekind === "both", yokai = settings.ekind === "yokai" || settings.ekind === "both";
+    // 特攻: 同じ種類の中では一番高いもの（「重複」は掛け算）。弓の対飛行1.5倍は武器種特性として別に掛ける
+    const vsBest = (type, skipBoth) => {
+      const list = b.mine.filter(e => e.type === type && !(skipBoth && e.both));
+      const st = list.filter(e => e.stack), ot = list.filter(e => !e.stack);
+      const out = st.slice(); if (ot.length) out.push(ot.reduce((a, c) => c.value > a.value ? c : a));
+      return out;
+    };
+    if (fly) {
+      if (weaponsOf(u).includes("弓")) mults.push({ cat: "特攻", f: 1.5, label: "弓の武器種特性（対飛行）" });
+      for (const e of vsBest("vs_fly")) mults.push({ cat: "特攻", f: 1 + e.value / 100, e, label: "対飛行" });
+    }
+    if (yokai) for (const e of vsBest("vs_yokai", fly)) mults.push({ cat: "特攻", f: 1 + e.value / 100, e, label: "対妖怪" });
+    const isDirect = weaponsOf(u).some(w => w === "大砲" || w === "軍船");
+    if (isDirect) {
+      const d = b.mine.filter(e => e.type === "direct" && e.from === u).reduce((a, e) => Math.max(a, e.value), 50);
+      mults.push({ cat: "直撃", f: 1 + d / 100, label: `直撃ボーナス${d}%（${d > 50 ? "特技・計略" : "武器種特性"}）` });
+    }
+    const noHalf = t => b.mine.some(e => e.type === t);
+    if (fly && u.range === "近" && !noHalf("no_half_fly")) mults.push({ cat: "半減", f: 0.5, label: "飛行敵には近接攻撃が半減" });
+    if (yokai && !isMagic(u) && !noHalf("no_half_yokai")) mults.push({ cat: "半減", f: 0.5, label: "妖怪には物理攻撃が半減" });
+    const mulAll = mults.reduce((a, m) => a * m.f, 1);
+    const hitAtk = fl(atk * mulAll);
     const ign = resolve(b.mine.filter(e => e.from === u), "def_ignore");
     const scythe = weaponsOf(u).includes("鎌") ? Math.min(100, 10 + 18 * settings.giant) : 0;
     const ignore = Math.min(100, ign.total + scythe);
     const magic = isMagic(u) || ignore >= 100;
     const edef = magic ? 0 : fl(edefBase * (1 - ignore / 100));
-    const up = byGroups(b.mine, "dmg_up"), up2 = resolve(b.mine, "dmg_up2"), speed = byGroups(b.mine, "speed"), gap = byGroups(b.mine, "gap"), cut = byGroups(b.mine, "dmg_cut");
-    const raw = Math.max(atk - edef, 20);
-    const dmg = fl(raw * multGroups(up, 1) * (1 + taken / 100) * (1 + up2.total / 100));
-    return { u, mine, st: b.st, refs: refUsed[i], atkS: b.st.atk, mult, atk, def: cur[i].def, hp: cur[i].hp, rng: cur[i].rng, heal: cur[i].heal,
-      ign, scythe, ignore, magic, edef, dmg, upG: up, up2, speedG: speed, gapG: gap, cutG: cut,
-      dmgUp: Math.round((multGroups(up, 1) - 1) * 100), dmgUp2: up2.total,
+    const up = byGroups(b.mine, "dmg_up"), speed = byGroups(b.mine, "speed"), gap = byGroups(b.mine, "gap"), cut = byGroups(b.mine, "dmg_cut");
+    // (攻撃値 − 防御値)、最低20 → × ダメージ補正（与ダメ増 × 敵の被ダメ増）
+    const raw = Math.max(hitAtk - edef, 20);
+    const dmg = fl(raw * multGroups(up, 1) * (1 + taken / 100));
+    return { u, mine, st: b.st, refs: refUsed[i], atkS: b.st.atk, mults, mulAll, hitAtk, atk, def: cur[i].def, hp: cur[i].hp, rng: cur[i].rng, heal: cur[i].heal,
+      ign, scythe, ignore, magic, edef, dmg, upG: up, speedG: speed, gapG: gap, cutG: cut,
+      dmgUp: Math.round((multGroups(up, 1) - 1) * 100),
       speed: Math.round((multGroups(speed, 1) - 1) * 100), gap: Math.round((1 - multGroups(gap, -1)) * 100),
       cut: Math.round((1 - multGroups(cut, -1)) * 100) };
   });
@@ -1370,6 +1479,8 @@ function flatSum(cat, list, u, sign = "+") {
   if (list.length === 1) return { cat, html: `<span class="${cls}">${sign}${sum}</span> <span class="src">${srcLine(list[0].e, u, list[0].g)}</span>` };
   return { cat, html: `<span class="${cls}">${sign}${sum}</span> <span class="src">固定値の合計（${list.length}件）</span> <details class="more"><summary>内訳 ▾</summary><span class="list">${list.map(x => `${sign}${x.e.value} ${srcLine(x.e, u, x.g)}`).join("<br>")}</span></details>` };
 }
+const r2 = v => Math.round(v * 100) / 100;
+const multHtml = (m, u) => `<span class="${m.f < 1 ? "down" : "up"}">×${r2(m.f)}</span> <span class="src">${m.e ? srcLine(m.e, u) + (m.label ? "・" + m.label : "") + (m.e.scope === "strategy" ? "（計略中）" : "") : m.label}${m.cat === "与えるダメージ" ? "・与えるダメージ" : m.cat === "攻撃倍率" ? "・攻撃倍率" : ""}</span>`;
 // 1体分の有効なバフを {cat, html} の並びにする（表示と計略で加わる効果の比較に共用）
 function buffItems(x) {
   const u = x.u, out = [];
@@ -1382,9 +1493,11 @@ function buffItems(x) {
     for (const e of x.refs.filter(e => e.type === k + "_flat"))
       out.push({ cat: label, html: `<span class="up">+（${refWho(e, u)}の${STAT_JA[e.ref.stat]}の${e.pctEff}%）</span> <span class="src">${srcOf(e, u)}${e.kobu ? "・鼓舞" : ""}${e.kmul && e.kmul !== 1 ? `（${e.ref.pct}%×鼓舞効果${e.kmul}倍）` : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}</span>` });
   }
-  for (const e of x.mult.used) push("攻撃", e, "%（倍率）");
   groups("与ダメージ", x.upG, "%");
-  for (const e of x.up2.used) push("与えるダメージ", e, "%");
+  for (const m of x.mults) out.push({ cat: "攻撃値倍率", html: multHtml(m, u) });
+  // 特殊攻撃だけに掛かる「与えるダメージ」は1撃の目安には入れず、参考として出す
+  for (const e of x.mine.filter(e => e.type === "dmg_up2" && e.scope === "special"))
+    out.push({ cat: "攻撃値倍率", html: `<span class="up">×${r2(1 + e.value / 100)}</span> <span class="src">${srcLine(e, u)}・特殊攻撃のみ（1撃の目安には含めない）</span>` });
   groups("攻撃速度", x.speedG, "%"); groups("隙短縮", x.gapG, "%"); groups("被ダメ軽減", x.cutG, "%");
   if (isMagic(u)) out.push({ cat: "防御無視", html: `<b>術攻撃</b> <span class="src">武器種</span>` });
   else {
@@ -1408,7 +1521,7 @@ function enemyItems(res) {
   pct("被ダメージ", e.enemy_taken, "+"); pct("与ダメージ", e.enemy_dealt); pct("移動速度", e.enemy_slow); pct("射程", e.enemy_rng);
   return out;
 }
-const CATS = ["攻撃", "防御", "耐久", "射程", "回復", "与ダメージ", "与えるダメージ", "攻撃速度", "隙短縮", "被ダメ軽減", "防御無視"];
+const CATS = ["攻撃", "防御", "耐久", "射程", "回復", "攻撃値倍率", "与ダメージ", "攻撃速度", "隙短縮", "被ダメ軽減", "防御無視"];
 const ECATS = ["防御", "攻撃", "被ダメージ", "与ダメージ", "移動速度", "射程"];
 function itemLines(items, cats, empty) {
   const html = cats.map(c => { const xs = items.filter(i => i.cat === c); return xs.length ? `<div class="bline"><span class="k">${c}</span>${xs.map(i => i.html).join("<br>")}</div>` : ""; }).join("");
@@ -1425,14 +1538,15 @@ function statSteps(x, k) {
   stage("特技・計略", s.p.normal.total, s.f.normal.total);
   const r = x.refs.filter(e => e.type === k + "_flat");
   if (r.length) { const add = r.reduce((a, e) => a + e.value, 0); v += add; out.push(`変換・鼓舞 +${add}（${r.map(e => esc(e.from.name) + " " + e.value).join("、")}） → ${v}`); }
-  if (k === "atk" && x.mult.total) { v = fl(v * (1 + x.mult.total / 100)); out.push(`攻撃倍率 +${x.mult.total}% → ${v}`); }
   return out;
 }
 function statBlock(x, res) {
-  const raw = Math.max(x.atk - x.edef, 20);
-  const dmgSteps = [`敵の防御 ${settings.edef} → ${x.magic ? "0（防御無視）" : x.edef}${!x.magic && x.ignore ? `（防御無視${x.ignore}%込み）` : ""}`,
-    `(攻撃 ${x.atk} − ${x.magic ? 0 : x.edef}) = ${raw}${raw === 20 ? "（最低20）" : ""}`,
-    `× 与ダメージ +${x.dmgUp}% × 敵の被ダメージ +${res.taken}%${x.dmgUp2 ? ` × 与えるダメージ +${x.dmgUp2}%` : ""} = ${x.dmg}`];
+  const raw = Math.max(x.hitAtk - x.edef, 20);
+  const dmgSteps = [
+    x.mults.length ? `攻撃値: (攻撃 ${x.atk}) ×${r2(x.mulAll)} = ${x.hitAtk}（${[...new Set(x.mults.map(m => m.cat))].join("・")}の合計。内訳は下の「攻撃値倍率」）` : `攻撃値: ${x.atk}（倍率なし）`,
+    `敵の防御 ${settings.edef} → ${x.magic ? "0（防御無視）" : x.edef}${!x.magic && x.ignore ? `（防御無視${x.ignore}%込み）` : ""}`,
+    `(攻撃値 ${x.hitAtk} − ${x.magic ? 0 : x.edef}) = ${raw}${raw === 20 ? "（最低20）" : ""}`,
+    `× 与ダメージ +${x.dmgUp}% × 敵の被ダメージ +${res.taken}% = ${x.dmg}`];
   const li = a => a.map(s => `<li>${s}</li>`).join("");
   return `<div class="stats"><span>攻 <b>${x.atk}</b></span><span>防 <b>${x.def}</b></span><span>耐 <b>${x.hp}</b></span><span>射 <b>${x.rng}</b></span><span>1撃 <b>${x.dmg}</b></span>
     <details class="more"><summary>実数値の内訳 ▾</summary><span class="list">
@@ -1595,11 +1709,11 @@ document.addEventListener("click", ev => {
   if (go) { goTab(1); setTimeout(() => { const el = $("ov-" + go.dataset.goto); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); }
 });
 function bindSetting(id, key, num) {
-  const el = $(id);
-  if (num) el.value = settings[key]; else el.checked = settings[key];
-  el.addEventListener("input", () => { settings[key] = num ? Number(el.value) || 0 : el.checked; renderAll(); });
+  const el = $(id), sel = el.tagName === "SELECT";
+  if (num || sel) el.value = settings[key]; else el.checked = settings[key];
+  el.addEventListener(sel ? "change" : "input", () => { settings[key] = sel ? el.value : num ? Number(el.value) || 0 : el.checked; renderAll(); });
 }
-bindSetting("s-edef", "edef", true); bindSetting("s-eatk", "eatk", true); bindSetting("s-giant", "giant", true); bindSetting("s-cond", "cond"); bindSetting("s-target", "target");
+bindSetting("s-edef", "edef", true); bindSetting("s-eatk", "eatk", true); bindSetting("s-giant", "giant", true); bindSetting("s-cond", "cond"); bindSetting("s-target", "target"); bindSetting("s-ekind", "ekind");
 (() => { let t = 0; try { t = Number(localStorage.getItem(LS_TAB)) || 0; } catch {} t = Math.min(Math.max(0, t), pages.length - 1); requestAnimationFrame(() => goTab(t, false)); })();
 
 const dlg = $("dlg");
