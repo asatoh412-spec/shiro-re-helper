@@ -482,9 +482,110 @@ def tags_of(text):
         out.append({"tag": t, "value": max(nums)} if nums else {"tag": t})
     return out
 
-def block(text, eff_text=None, giants=5):
+# ---- 大破回数で変わる効果（鎌の大破特技など）: 「大破する度に攻撃が9%上昇(5回まで)」「大破数5回以上で攻撃が1.5倍」 ----
+# 選んだ大破回数で画面側が値を決める。taiha = {k: per(1回ごと)/min(N回以上)/upto(上限だけ書かれたもの), n, max, cap, party}
+TAIHA_RX = re.compile(r"(?:(部隊の城娘の|部隊の|自身の)(?:合戦中の?)?|合戦中の?)?大破(?:"
+    r"(?P<per>(?:する|した)?(?:度|毎|ごと)に|(?:した)?数(?:1回につき|に応じて|が多い程))|数(?P<min>\d+)回以上で)")
+SUBJ_HEAD = re.compile(r"^(?:" + "|".join(rx.pattern for rx, _ in SUBJ) + ")")
+
+def taiha_split(text):
+    """大破回数で変わる部分を切り出す → (残りの文章, [区切り])"""
+    if not text or "大破" not in text: return text, []
+    clauses, rest, pos = [], [], 0
+    for m in TAIHA_RX.finditer(text):
+        if m.start() < pos: continue
+        i, depth, parens, cut = m.end(), 0, [], None
+        while i < len(text):
+            c = text[i]
+            if c in "(（": depth += 1; parens.append([i, None])
+            elif c in ")）" and depth:
+                depth -= 1; parens[-1][1] = i
+            elif depth == 0 and c in "。\n":
+                # 「大破数9回以上で射程が1.7倍。攻撃が600上昇」: 主語のない次の文は条件の続き
+                nxt = text[i + 1:]
+                if m.group("min") and c == "。" and re.match(STAT + r"が", nxt) and not re.search(r"[。\n]", nxt): i += 1; continue
+                break
+            elif depth == 0 and c in " 　" and cut is None: cut = i
+            i += 1
+        end = i
+        # 空白で区切れていても、後ろに「(5回まで)」があればそこまでが同じ効果
+        if cut is not None:
+            upto = [pe for ps, pe in parens if pe is not None and "回まで" in text[ps:pe]]
+            end = upto[-1] + 1 if upto else cut
+        body = text[m.end():end]
+        # 主語: 本文にあればそれ、なければ同じ文の前のほうの主語、それもなければ自身
+        subj = "自身の"
+        if not SUBJ_HEAD.match(body):
+            sent = text[max(text.rfind("。", 0, m.start()), text.rfind("\n", 0, m.start())) + 1:m.start()]
+            hits = [h for rx, _ in SUBJ for h in rx.finditer(sent)]
+            if hits and m.group(1) != "自身の": subj = max(hits, key=lambda h: h.start()).group(0)
+        else: subj = ""
+        clauses.append(dict(kind="min" if m.group("min") else "per", n=int(m.group("min") or 0),
+                            party=bool(m.group(1) and m.group(1).startswith("部隊")), subj=subj, body=body, selfonly="自分のみ" in text))
+        rest.append(text[pos:m.start()]); rest.append(" "); pos = end
+    rest.append(text[pos:])
+    return "".join(rest), clauses
+
+def taiha_effects(clauses):
+    out = []
+    for c in clauses:
+        body = c["body"]
+        parens = re.findall(r"[(（]([^)）]*)[)）]", body)
+        stack = any(re.search(r"重複(?!なし|しない)", p) for p in parens)
+        cnt = next((int(x) for p in parens for x in re.findall(r"(\d+)回まで", p)), None)
+        # 括弧の直前の値に掛かる上限: 「攻撃が140ずつ上昇(上限900)」「攻撃後の隙が12%短縮(最大60%)」
+        # 上限は、ひとつ前の括弧からその括弧までに書かれた値すべてに掛かる
+        caps, prev_end = [], 0
+        for pm in re.finditer(r"[(（]([^)）]*)[)）]", body):
+            cm = re.search(r"(?:上限|最大)(\d+(?:\.\d+)?)(%|倍)?", pm.group(1))
+            seg_pairs = list(PAIR.finditer(body, prev_end, pm.start()))
+            prev_end = pm.end()
+            if not cm or re.search(r"秒", pm.group(1)): continue
+            caps.append((seg_pairs, float(cm.group(1)), cm.group(2) or "", body[:pm.start()]))
+        plain = re.sub(r"[(（][^)）]*[)）]", "", body)
+        plain = re.sub(r"(?:さらに|更に)", "", plain).replace("ずつ", "")
+        plain = re.sub(r"が(\d+)と(\d+(?:\.\d+)?)%", r"が\2%と\1", plain).replace("攻撃対象が", "攻撃対象数が")
+        kind = c["kind"]
+        if kind == "per" and not re.search(r"\d", plain) and caps:
+            # 「大破数が多い程攻撃、攻撃速度上昇(上限60%)」: 1回あたりの値が書かれていない
+            kind = "upto"
+            _, cv, cu, before = caps[0]
+            stats = re.findall(STAT, before)
+            subj = c["subj"] or (SUBJ_HEAD.match(before).group(0) if SUBJ_HEAD.match(before) else "")
+            plain = subj + "と".join(dict.fromkeys(stats)) + f"が{num(cv)}{cu}上昇"
+            subj_used = ""
+        else: subj_used = c["subj"]
+        effs = effects_of(subj_used + plain + ("(自分のみ)" if c.get("selfonly") else ""), 1)
+        cap_by_type = {}
+        if kind == "per":
+            for pms, cv, cu, _ in caps:
+                for pm in pms:
+                    pu = pm.group(3) or ""
+                    if (cu == "%") != (pu == "%"): continue  # 割合の上限は割合の値にだけ
+                    v = VERB.search(body, pm.end()); verb = v.group(0) if v else "上昇"
+                    for st in re.findall(STAT, pm.group(1)):
+                        t, vv = classify(False, st, cv, cu or pu, verb)
+                        if t: cap_by_type[t] = num(vv)
+        for e in effs:
+            e.pop("cond", None); e.pop("giant", None)
+            if stack: e["stack"] = True
+            t = {"k": kind}
+            if kind == "min": t["n"] = c["n"]
+            if cnt: t["max"] = cnt
+            if e["type"] in cap_by_type: t["cap"] = cap_by_type[e["type"]]
+            if c["party"]: t["party"] = True
+            e["taiha"] = t
+            out.append(e)
+    return out
+
+def block(text, eff_text=None, giants=5, taiha_only=False):
     b = {"text": text}
-    if eff_text is not None: b["effects"] = effects_of(eff_text, giants) + refs_of(eff_text, giants)
+    src = text if taiha_only else eff_text
+    rest, tclauses = taiha_split(src) if src else (src, [])
+    if taiha_only:
+        te = taiha_effects(tclauses)
+        if te: b["effects"] = te
+    elif eff_text is not None: b["effects"] = effects_of(rest, giants) + refs_of(rest, giants) + taiha_effects(tclauses)
     tg = tags_of(text)
     if tg: b["tags"] = tg
     return b
@@ -538,7 +639,7 @@ def build_units():
             strategy=block(u["strat"], re.sub(r"^\[\d+s\]", "", first), g),
             formation=block(form_text, form_eff, g),
             held=block("\n".join(held_l), "\n".join(l.replace("[所持]", "") for l in held_l), g),
-            specialAttack=block(u["special"]),
+            specialAttack=block(u["special"], taiha_only=True),
             kai2Missing=(u["name"] in has_kai2 and u["kai"] != "弐") or None,
             specialAbility=block("\n".join(f"【{n}】{e}" for n, e in sp), SEP.join(e for n, e in sp), g)))
     for u in out:
@@ -572,6 +673,15 @@ def target_ja(t):
     if t.startswith("other:"): return t[6:]
     return t
 
+def taiha_ja(e):
+    t = e.get("taiha")
+    if not t: return ""
+    who = "部隊の" if t.get("party") else ""
+    if t["k"] == "min": return f"（{who}大破{t['n']}回以上）"
+    lim = "、" + "、".join(x for x in ((f"{t['max']}回まで" if t.get("max") else ""), (f"上限{t['cap']}" if t.get("cap") else "")) if x) if t.get("max") or t.get("cap") else ""
+    if t["k"] == "upto": return f"（{who}大破数に応じて最大{lim}）"
+    return f"（{who}大破1回ごと{lim}）"
+
 def summarize(block):
     text = (block or {}).get("text") or ""
     if not text or text == "なし": return text
@@ -589,7 +699,7 @@ def summarize(block):
         elif e["type"].startswith("no_half_"): body = name
         elif e["type"] in MULT_TYPES: body = f"{name}×{num(round(1 + e['value'] / 100, 2))}" + SCOPE_JA.get(e.get("scope"), "")
         else: body = f"{name}{sign}{e['value']}{unit}" if sign else f"{name} {e['value']}{unit}"
-        parts.append(f"{target_ja(e.get('target') or 'self')} {body}" + ("（重複）" if e.get("stack") else "") + (f"（巨大化{e['giant']}回）" if e.get("giant") else "") + ("（条件付き）" if e.get("cond") else ""))
+        parts.append(f"{target_ja(e.get('target') or 'self')} {body}" + ("（重複）" if e.get("stack") else "") + (f"（巨大化{e['giant']}回）" if e.get("giant") else "") + taiha_ja(e) + ("（条件付き）" if e.get("cond") else ""))
     tags = [t["tag"] + (str(t["value"]) if t.get("value") else "") for t in block.get("tags") or []]
     cd = re.match(r"\[(\d+)s\]", text)
     out = (f"[{cd.group(1)}s]" if cd else "") + "、".join(parts)
@@ -777,6 +887,12 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
   .tog { padding: 5px 8px; border-radius: 14px; font-size: 12px; font-weight: 700; min-width: 74px; white-space: nowrap; }
   .tog.on { background: var(--accent); color: #fff; }
   .tog.off { background: #fff; color: var(--muted); border-color: #c9c2b4; }
+  .slot { flex-wrap: wrap; }
+  .taiha { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; font-size: 12px; margin: 2px 0 4px; }
+  .taiha .tl { color: var(--muted); margin-right: 2px; white-space: nowrap; }
+  .taiha .tb { min-width: 25px; padding: 3px 4px; border-radius: 12px; font-size: 12px; border-color: #c9c2b4; color: var(--muted); }
+  .taiha .tb.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .taiha .tn { min-width: 22px; text-align: center; }
   .rm { border: 0; background: none; color: var(--muted); font-size: 18px; padding: 4px 6px; flex: none; }
   /* 探す */
   dialog.sheet { padding: 0; border: 0; width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; background: var(--bg); }
@@ -1076,9 +1192,9 @@ const GAP_CHECKS = [
   { types: ["dmg_cut", "enemy_atk", "enemy_dealt"], why: "耐久面。被ダメージ軽減か、敵の攻撃・与ダメージ低下" },
   { types: ["heal_flat", "heal_pct"],   why: "長期戦の維持" },
 ];
-const SOURCES = [["skill","特技"],["strategy","計略"],["formation","編成特技"],["held","所持特技"],["specialAbility","特殊能力"]];
-const TAG_SOURCES = [...SOURCES, ["specialAttack","大破・特殊攻撃"]];
-const GROUP_OF = { skill: "normal", strategy: "normal", formation: "formation", held: "held", specialAbility: "normal" };
+const SOURCES = [["skill","特技"],["strategy","計略"],["formation","編成特技"],["held","所持特技"],["specialAbility","特殊能力"],["specialAttack","大破特技"]];
+const TAG_SOURCES = SOURCES.map(([k, l]) => [k, k === "specialAttack" ? "大破・特殊攻撃" : l]);
+const GROUP_OF = { skill: "normal", strategy: "normal", formation: "formation", held: "held", specialAbility: "normal", specialAttack: "normal" };
 // 不足チェックで有無を見る特殊効果
 const SP_CHECKS = [
   { tags: ["隠密無効"],                 why: "隠密状態の敵を攻撃できるようにする" },
@@ -1119,10 +1235,44 @@ const attrTags = u => (u.attr || []).map(a => `<span class="tag" style="backgrou
 const STAT_JA = { atk: "攻撃", def: "防御", hp: "耐久", rng: "射程", heal: "回復" };
 const fmtVal = e => (e.type === "def_ignore" && e.value >= 100) || EFFECTS[e.type]?.flag ? "" : " " + e.value + (EFFECTS[e.type]?.unit ?? "");
 const refText = e => `${e.ref.frm === "recv" ? "各自" : "提供者"}の${STAT_JA[e.ref.stat]}の${e.ref.pct}%${e.kobu ? "（鼓舞）" : ""}`;
-const effText = e => e.ref ? `${(EFFECTS[e.type]?.label ?? e.type).replace("(固定)", "")} ${refText(e)}` : `${EFFECTS[e.type]?.label ?? e.type}${fmtVal(e)}${e.stack ? "（重複）" : ""}`;
+const effText = e => e.ref ? `${(EFFECTS[e.type]?.label ?? e.type).replace("(固定)", "")} ${refText(e)}` : `${EFFECTS[e.type]?.label ?? e.type}${fmtVal(e)}${taihaRule(e)}${e.stack ? "（重複）" : ""}`;
 const targetText = t => ({ self:"自身", all:"全体", inrange:"射程内", near:"近接", far:"遠隔", target:"対象1体", enemy:"敵" }[t]
   ?? t.replace("weapon:", "").replace(/\|/g, "・").replace("attr:", "").replace("other:", "") + "城娘");
 const giantTxt = e => e.giant ? `（巨大化${e.giant}回分）` : "";
+// ---- 大破回数で変わる効果（鎌の大破特技など）。編成の各城娘で選んだ大破回数で値を決める ----
+const TAIHA_UPTO = 5;  // 「大破数が多い程〜(上限60%)」は1回あたりの値が書かれていないので、5回で上限に届くとみなす
+const taihaEffs = u => SOURCES.flatMap(([k]) => (u[k]?.effects || []).filter(e => e.taiha));
+// 選べる大破回数の上限: 「(5回まで)」「9回以上」「上限900（140ずつ）」から。書かれていなければ5回
+function taihaMax(u) {
+  let m = 0;
+  for (const e of taihaEffs(u)) {
+    const t = e.taiha;
+    m = Math.max(m, t.max ?? (t.k === "min" ? t.n : t.cap && e.value ? Math.ceil(t.cap / e.value) : TAIHA_UPTO));
+    if (t.k === "min") m = Math.max(m, t.n);
+  }
+  return m;
+}
+const taihaParty = u => taihaEffs(u).some(e => e.taiha.party);
+function applyTaiha(e, n) {
+  const t = e.taiha;
+  if (!t) return e;
+  n = n || 0;
+  if (t.k === "min") return n >= t.n ? { ...e, taihaN: n } : null;
+  const k = Math.min(n, t.max ?? Infinity);
+  let v = t.k === "upto" ? e.value * Math.min(k, TAIHA_UPTO) / TAIHA_UPTO : e.value * k;
+  if (t.cap != null) v = Math.min(v, t.cap);
+  v = Math.round(v * 100) / 100;
+  return v ? { ...e, value: v, per: e.value, taihaN: k } : null;
+}
+// 効果一覧用（1回あたりの値）と、バフ表示用（選んだ回数での値）
+const taihaRule = e => { const t = e.taiha; if (!t) return "";
+  const who = t.party ? "部隊の" : "";
+  return t.k === "min" ? `（${who}大破${t.n}回以上）` : t.k === "upto" ? `（${who}大破数に応じて最大）` : `／${who}大破1回`; };
+const taihaTxt = e => { const t = e.taiha; if (!t) return "";
+  const who = t.party ? "部隊の" : "";
+  if (t.k === "min") return `（${who}大破${t.n}回以上）`;
+  if (t.k === "upto") return `（${who}大破${e.taihaN}回。${TAIHA_UPTO}回で上限の${e.per}${EFFECTS[e.type]?.unit ?? ""}に届くと仮定）`;
+  return `（${who}大破${e.taihaN}回×${e.per}${t.cap != null && e.value >= t.cap ? `、上限${t.cap}` : ""}）`; };
 const effTag = e => `<span class="tag eff${EFFECTS[e.type]?.enemy ? " enemy" : ""}${e.cond ? " cond" : ""}">${e.target === "enemy" && effText(e).startsWith("敵") ? "" : esc(targetText(e.target || "self")) + ":"}${esc(effText(e))}</span>`;
 const fl = Math.floor;
 const weaponsOf = u => u.weapons || String(u.weapon || "").split("/");
@@ -1196,8 +1346,12 @@ const STATS = [["atk", "atk_pct", "atk_flat"], ["def", "def_pct", "def_flat"], [
 function compute(p = party) {
   const members = p.map(x => ({ ...x, u: byId(x.id) })).filter(m => m.u);
   const active = [];
-  for (const m of members) for (const e of allEffects(m.u))
-    if ((e.source !== "strategy" || m.strat) && (e.source !== "specialAbility" || m.sp)) active.push(e);
+  for (const m of members) for (const e0 of allEffects(m.u)) {
+    if ((e0.source !== "strategy" || m.strat) && (e0.source !== "specialAbility" || m.sp)) {
+      const e = applyTaiha(e0, m.taiha);
+      if (e) active.push(e);
+    }
+  }
   const plain = active.filter(e => !e.ref), refs = active.filter(e => e.ref);
 
   // 1) 割合バフ・固定値バフまで（編成→所持→特技計略）
@@ -1429,6 +1583,16 @@ function openPick() {
 function closePick() { const d = $("pick"); if (d.open) { try { d.close(); } catch { d.removeAttribute("open"); } } }
 
 const hasStrat = u => !!(u.strategy?.text && u.strategy.text !== "なし");
+// 大破回数の選択（大破で強化される城娘だけ）。10回分までならボタン、それより多いときは−／＋
+function taihaPicker(u, i) {
+  const max = taihaMax(u), p = party[i];
+  if (!max || !p) return "";
+  const n = Math.min(p.taiha || 0, max), label = taihaParty(u) ? "部隊の大破数" : "大破回数";
+  const btns = max <= 10
+    ? Array.from({ length: max + 1 }, (_, k) => `<button class="tb${k === n ? " on" : ""}" data-taiha="${i}:${k}" aria-pressed="${k === n}">${k}</button>`).join("")
+    : `<button class="tb" data-taiha="${i}:${Math.max(0, n - 1)}" aria-label="減らす">−</button><b class="tn">${n}</b><button class="tb" data-taiha="${i}:${Math.min(max, n + 1)}" aria-label="増やす">＋</button><button class="tb${n === max ? " on" : ""}" data-taiha="${i}:${max}">最大${max}</button>`;
+  return `<div class="taiha"><span class="tl">${label}</span>${btns}</div>`;
+}
 const hasSp = u => !!(u.specialAbility?.text && u.specialAbility.text !== "なし");
 function renderSlots(res) {
   let html = "";
@@ -1445,6 +1609,7 @@ function renderSlots(res) {
           ${hasSp(u) ? `<button class="tog ${p.sp ? "on" : "off"}" data-tog-sp="${i}">特殊 ${p.sp ? "ON" : "OFF"}</button>` : ""}
         </div>
         <button class="rm" data-rm="${i}" title="外す" aria-label="外す">×</button>
+        ${taihaPicker(u, i)}
       </div>` : `<div class="slot empty" data-open-pick="${i}">＋ 城娘を探す</div>`;
   }
   $("slots").innerHTML = html;
@@ -1475,7 +1640,7 @@ function renderOverview(res) {
 const GL = { formation: "編成", held: "所持", normal: "" };
 const srcOf = (e, u) => `${esc(e.from.name)}${e.from === u ? "（自身）" : ""}・${e.sourceLabel}`;
 const refWho = (e, u) => e.ref.frm === "recv" ? "各自" : e.from === u ? "自身" : esc(e.from.name);
-const srcLine = (e, u, grp) => `${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${giantTxt(e)}${e.cond ? "（条件付き）" : ""}`;
+const srcLine = (e, u, grp) => `${srcOf(e, u)}${grp && GL[grp] ? "［" + GL[grp] + "］" : ""}${e.stack ? "（重複）" : ""}${giantTxt(e)}${taihaTxt(e)}${e.cond ? "（条件付き）" : ""}`;
 // 固定値は合計だけを出し、内訳は開いて見る
 function flatSum(cat, list, u, sign = "+") {
   if (!list.length) return null;
@@ -1564,6 +1729,7 @@ function renderBuffs(res) {
     const p = party.find(p => p.id === x.u.id);
     return `<div class="bcard"><h3>${unitIcons(x.u, "sm")}<span style="font-weight:800">${esc(x.u.name)}</span>
       ${hasStrat(x.u) ? `<button class="tog ${p?.strat ? "on" : "off"}" data-tog-strat="${party.indexOf(p)}" style="margin-left:auto;min-width:0">計略 ${p?.strat ? "ON" : "OFF"}</button>` : ""}</h3>
+      ${taihaPicker(x.u, party.indexOf(p))}
       ${statBlock(x, res)}
       ${itemLines(buffItems(x), CATS, "数値で読み取れたバフはありません")}</div>`;
   }).join("");
@@ -1710,6 +1876,8 @@ document.addEventListener("click", ev => {
   if (rm) { party.splice(+rm.dataset.rm, 1); renderAll(); }
   if (ts && party[+ts.dataset.togStrat]) { const p = party[+ts.dataset.togStrat]; p.strat = !p.strat; renderAll(); }
   if (tsp && party[+tsp.dataset.togSp]) { const p = party[+tsp.dataset.togSp]; p.sp = !p.sp; renderAll(); }
+  const tb = t.closest("[data-taiha]");
+  if (tb) { const [i, n] = tb.dataset.taiha.split(":").map(Number); if (party[i]) { party[i].taiha = n; renderAll(); } }
   if (go) { goTab(1); setTimeout(() => { const el = $("ov-" + go.dataset.goto); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); }
 });
 function bindSetting(id, key, num) {
