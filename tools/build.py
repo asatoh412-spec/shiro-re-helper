@@ -611,12 +611,16 @@ def public_units(units):
 
 PWA_MANIFEST = {"name": "城プロRE 編成補助", "short_name": "城プロ編成", "start_url": "./", "scope": "./", "display": "standalone",
     "background_color": "#f6f4ef", "theme_color": "#8a3b2e", "lang": "ja",
-    "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-              {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]}
+    "id": "./",
+    # Androidは丸や角丸に切り抜くので、余白を取った maskable 用を別に登録する
+    "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+              {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+              {"src": "icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+              {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
 
 PWA_SW = r"""// 自動生成: build.py --pwa
 const CACHE = "shiro-__HASH__";
-const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-192.png", "icon-maskable-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
