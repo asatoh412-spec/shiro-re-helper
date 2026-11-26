@@ -776,6 +776,8 @@ def build_pwa(units, outdir):
         .replace("<title>城プロRE 編成補助</title>", '<title>城プロRE 編成補助</title>\n<link rel="manifest" href="manifest.webmanifest">\n<meta name="theme-color" content="#8a3b2e">\n<link rel="icon" href="icon-192.png">\n<link rel="apple-touch-icon" href="icon-192.png">')
         .replace("データ: 城プロRE攻略wiki（scre.swiki.jp）の全城娘一覧・ステータス一覧/能力値（DATA_DATE 取得）。効果は説明文から自動で読み取ったもので、読み違いがあり得ます。",
                  "データ: 城プロRE攻略wiki（scre.swiki.jp）より（" + meta["built"] + " 取得）。特技・計略などは効果の要約で、原文はwikiを参照してください。効果は自動で読み取ったもので、読み違いがあり得ます。非公式の個人制作ツールです。"))
+    html_p = re.sub(r"<!--GH-->.*?<!--/GH-->\n", "", html_p, flags=re.S)  # GitHub版への案内はclaude.ai版だけに出す
+    assert "gh-banner" not in html_p
     assert "PWA_MODE = true" in html_p and "manifest.webmanifest" in html_p and "非公式の個人制作" in html_p
     hh = hashlib.md5((html_p + PWA_SW).encode("utf-8")).hexdigest()[:8]
     def w(name, text):
@@ -972,6 +974,17 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
   <h1>城プロRE 編成補助</h1>
   <span class="count" id="hdr-count"></span>
 </header>
+<!--GH-->
+<style>
+  #gh-banner { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #f6e3dc; border-bottom: 1px solid var(--line); font-size: 12.5px; flex: none; }
+  #gh-banner[hidden] { display: none; }
+  #gh-banner a { font-weight: 700; }
+  #gh-banner button { margin-left: auto; flex: none; padding: 2px 8px; border-color: var(--line); color: var(--muted); }
+</style>
+<div id="gh-banner"><span>ホーム画面に入れるなら <a href="https://asatoh412-spec.github.io/shiro-re-helper/" target="_blank" rel="noopener">GitHub版</a>（Chromeで開いて「アプリをインストール」）</span><button type="button" id="gh-close" aria-label="閉じる">×</button></div>
+<script>try { if (localStorage.getItem("gh-banner-off")) document.getElementById("gh-banner").hidden = true; } catch (e) {}
+document.getElementById("gh-close").onclick = () => { document.getElementById("gh-banner").hidden = true; try { localStorage.setItem("gh-banner-off", "1"); } catch (e) {} };</script>
+<!--/GH-->
 <nav class="tabs" id="tabs"></nav>
 <div id="update-banner" hidden></div>
 <div class="pager" id="pager">
@@ -1027,6 +1040,12 @@ TEMPLATE_HTML = r'''<!DOCTYPE html>
 </div></div>
 
 <div class="page" data-title="設定"><div class="inner">
+<!--GH-->
+  <section class="panel">
+    <h2>ホーム画面に入れる</h2>
+    <div class="hint" style="margin:0">このページから追加すると灰色の仮アイコンになります。お城アイコンで入れるには <a href="https://asatoh412-spec.github.io/shiro-re-helper/" target="_blank" rel="noopener">GitHub版</a> をChromeで開き、メニューの「アプリをインストール」を選んでください。</div>
+  </section>
+<!--/GH-->
   <section class="panel">
     <h2>計算の設定</h2>
     <div class="settings">
